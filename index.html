@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Korpus Planer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        #workspace {
+            cursor: grab;
+            background-color: #f0f4f8;
+            background-image:
+                linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        #workspace:active { cursor: grabbing; }
+        .dimension-line, .snap-guideline {
+            stroke: #4a5568;
+            stroke-width: 1;
+            vector-effect: non-scaling-stroke;
+        }
+        .snap-guideline { stroke: #ef4444; stroke-dasharray: 4; }
+        .dimension-text {
+            font-family: monospace; font-size: 10px; fill: #2d3748;
+            text-anchor: middle; paint-order: stroke; stroke: #f0f4f8; stroke-width: 3px;
+        }
+        .draggable-group { cursor: grab; }
+        .draggable-group:hover { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15)); }
+        .draggable-group.selected .selection-highlight {
+            stroke: #3182ce; stroke-width: 2; vector-effect: non-scaling-stroke;
+        }
+        .panel { stroke: #a0aec0; }
+        .back-panel { stroke: none; }
+        .shelf-panel { stroke: #a0aec0; }
+        .plinth-panel { fill: #cbd5e1; stroke: #718096; }
+        .door-panel { stroke: #4a5568; stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+        #inspector-panel { transition: transform 0.3s ease-in-out; }
+        input[type="color"] {
+            -webkit-appearance: none;
+            width: 100%; height: 40px; border: none; cursor: pointer;
+            border-radius: 0.375rem; border: 1px solid #d1d5db;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: none; border-radius: 0.375rem; }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col h-screen overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-white shadow-md p-4 z-20">
+        <div class="flex justify-between items-center gap-4">
+            <h1 class="text-xl font-bold text-gray-800 hidden lg:block">Korpus Planer</h1>
+            <div class="flex items-center gap-2 text-sm text-gray-600">
+                <i class="fas fa-eye"></i>
+                <label for="door-opacity-slider" class="whitespace-nowrap">Türen</label>
+                <input type="range" id="door-opacity-slider" min="0" max="1" step="0.05" value="1" class="w-24">
+            </div>
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                 <button id="save-btn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-3 rounded-lg shadow flex items-center" title="Planung speichern"><i class="fas fa-save mr-0 md:mr-2"></i><span class="hidden md:inline">Speichern</span></button>
+                 <button id="load-btn" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-3 rounded-lg shadow flex items-center" title="Planung laden"><i class="fas fa-folder-open mr-0 md:mr-2"></i><span class="hidden md:inline">Laden</span></button>
+                 <input type="file" id="load-input" class="hidden" accept="application/json">
+                 <button id="show-material-list-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg shadow flex items-center" title="Materialliste anzeigen"><i class="fas fa-list-alt mr-0 md:mr-2"></i><span class="hidden md:inline">Material</span></button>
+                 <button id="reset-view-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold p-2.5 rounded-lg shadow flex items-center" title="Ansicht zurücksetzen"><i class="fas fa-expand"></i></button>
+                 <button id="add-plinth-btn" class="bg-slate-500 hover:bg-slate-600 text-white font-bold py-2 px-3 rounded-lg shadow flex items-center"><i class="fas fa-layer-group mr-0 md:mr-2"></i><span class="hidden md:inline">Sockel</span></button>
+                 <button id="add-corpus-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg shadow flex items-center"><i class="fas fa-plus mr-0 md:mr-2"></i><span class="hidden md:inline">Korpus</span></button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow relative" id="main-container">
+        <svg id="workspace" class="w-full h-full"></svg>
+    </main>
+
+    <!-- Inspector Panel -->
+    <aside id="inspector-panel" class="bg-white w-80 shadow-xl p-6 z-10 absolute top-0 right-0 h-full transform translate-x-full overflow-y-auto">
+        <div class="flex justify-between items-center mb-6 sticky top-0 bg-white pb-4 -mt-6 pt-6">
+            <h2 id="inspector-title" class="text-lg font-bold text-gray-800">Eigenschaften</h2>
+            <button id="close-inspector-btn" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times fa-lg"></i></button>
+        </div>
+        <div id="inspector-content" class="space-y-4"></div>
+    </aside>
+
+    <!-- Material List Modal -->
+    <div id="material-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-30 hidden">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <header class="p-4 border-b flex justify-between items-center">
+                <h3 class="text-xl font-bold">Materialliste</h3>
+                <button id="close-material-modal-btn" class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
+            </header>
+            <section id="material-list-content" class="p-6 overflow-y-auto">
+                <!-- Content will be injected by JS -->
+            </section>
+        </div>
+    </div>
+
+<script>
+const workspace = document.getElementById('workspace');
+const inspectorPanel = document.getElementById('inspector-panel');
+const inspectorTitle = document.getElementById('inspector-title');
+const inspectorContent = document.getElementById('inspector-content');
+const addCorpusBtn = document.getElementById('add-corpus-btn');
+const addPlinthBtn = document.getElementById('add-plinth-btn');
+const closeInspectorBtn = document.getElementById('close-inspector-btn');
+const resetViewBtn = document.getElementById('reset-view-btn');
+const showMaterialListBtn = document.getElementById('show-material-list-btn');
+const materialModal = document.getElementById('material-modal');
+const materialListContent = document.getElementById('material-list-content');
+const closeMaterialModalBtn = document.getElementById('close-material-modal-btn');
+const doorOpacitySlider = document.getElementById('door-opacity-slider');
+const saveBtn = document.getElementById('save-btn');
+const loadBtn = document.getElementById('load-btn');
+const loadInput = document.getElementById('load-input');
+
+let items = [];
+let selectedItem = { id: null, type: null };
+let nextId = 1;
+const snapThreshold = 10;
+const scaleFactor = 4; 
+
+let view = { scale: 0.3, tx: workspace.clientWidth / 4, ty: 50 };
+let doorOpacity = 1.0;
+let isPanning = false;
+let startPoint = { x: 0, y: 0 };
+let activeDrag = null;
+
+const canvasGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+const guidelineGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+workspace.appendChild(canvasGroup);
+workspace.appendChild(guidelineGroup);
+
+function getNextId() { return nextId++; }
+
+function addNewItem(type) {
+    const newX = (-view.tx + workspace.clientWidth / 2) / view.scale;
+    const newY = (-view.ty + 100) / view.scale;
+    let newItem;
+
+    if (type === 'corpus') {
+        newItem = {
+            id: getNextId(), type: 'corpus', x: newX, y: newY,
+            width: 1000, height: 2350, depth: 600, thickness: 19, shelves: [],
+            color: '#FFFFFF',
+            door: { type: 'none', offsetTop: 2, offsetBottom: 2, offsetSide: 2, gap: 2, color: '#E2E8F0' },
+            backPanel: { thickness: 3, offset: 10, grooveDepth: 5 }
+        };
+    } else if (type === 'plinth') {
+        newItem = {
+            id: getNextId(), type: 'plinth', x: newX, y: newY + (2350 / scaleFactor),
+            width: 1000, height: 100, depth: 580
+        };
+    }
+    items.push(newItem);
+    selectItem(newItem.id, newItem.type);
+}
+
+function selectItem(id, type) {
+    selectedItem = { id, type };
+    const item = items.find(i => i.id === parseInt(id));
+    showInspector(item);
+    render();
+}
+
+function render() {
+    canvasGroup.innerHTML = '';
+    updateViewTransform();
+    items.forEach(item => {
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('class', 'draggable-group');
+        group.setAttribute('data-id', item.id);
+        group.setAttribute('data-type', item.type);
+        group.setAttribute('transform', `translate(${item.x}, ${item.y})`);
+        
+        if (item.id === selectedItem.id) group.classList.add('selected');
+
+        if (item.type === 'corpus') {
+            drawCorpus(group, item);
+            drawDimensions(group, item);
+        } else if (item.type === 'plinth') {
+            drawPlinth(group, item);
+        }
+        canvasGroup.appendChild(group);
+    });
+}
+
+function drawCorpus(group, corpus) {
+    const w = corpus.width / scaleFactor;
+    const h = corpus.height / scaleFactor;
+    const t = corpus.thickness / scaleFactor;
+
+    group.appendChild(createRect('back-panel selection-highlight', t, t, w - 2 * t, h - 2 * t, corpus.color));
+    
+    corpus.shelves.forEach(shelf => {
+        const shelfHeight = shelf.thickness / scaleFactor;
+        const shelfY = h - t - (shelf.yPositionFromBottom / scaleFactor) - shelfHeight;
+        group.appendChild(createRect('shelf-panel', t, shelfY, w - 2 * t, shelfHeight, corpus.color));
+    });
+
+    group.appendChild(createRect('panel selection-highlight', 0, h - t, w, t, corpus.color));
+    group.appendChild(createRect('panel selection-highlight', 0, t, t, h - 2 * t, corpus.color));
+    group.appendChild(createRect('panel selection-highlight', w - t, t, t, h - 2 * t, corpus.color));
+    group.appendChild(createRect('panel selection-highlight', 0, 0, w, t, corpus.color));
+
+    drawDoors(group, corpus);
+}
+
+function drawDoors(group, corpus) {
+    const { door } = corpus;
+    if (door.type === 'none') return;
+
+    const w = corpus.width / scaleFactor;
+    const h = corpus.height / scaleFactor;
+    const oTop = door.offsetTop / scaleFactor;
+    const oBottom = door.offsetBottom / scaleFactor;
+    const oSide = door.offsetSide / scaleFactor;
+    const gap = door.gap / scaleFactor;
+
+    const doorHeight = h - oTop - oBottom;
+    if (doorHeight <= 0) return;
+
+    if (door.type === 'one') {
+        const doorWidth = w - 2 * oSide;
+        if (doorWidth <= 0) return;
+        group.appendChild(createRect('door-panel selection-highlight', oSide, oTop, doorWidth, doorHeight, door.color, doorOpacity));
+    } else if (door.type === 'two') {
+        const doorWidth = (w - 2 * oSide - gap) / 2;
+        if (doorWidth <= 0) return;
+        group.appendChild(createRect('door-panel selection-highlight', oSide, oTop, doorWidth, doorHeight, door.color, doorOpacity));
+        group.appendChild(createRect('door-panel selection-highlight', oSide + doorWidth + gap, oTop, doorWidth, doorHeight, door.color, doorOpacity));
+    }
+}
+
+function drawPlinth(group, plinth) {
+    const w = plinth.width / scaleFactor;
+    const h = plinth.height / scaleFactor;
+    group.appendChild(createRect('plinth-panel selection-highlight', 0, 0, w, h));
+}
+
+function createRect(className, x, y, width, height, fill = null, opacity = null) {
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('class', className);
+    rect.setAttribute('x', x); rect.setAttribute('y', y);
+    rect.setAttribute('width', width); rect.setAttribute('height', height);
+    if (fill) rect.setAttribute('fill', fill);
+    if (opacity !== null) rect.setAttribute('fill-opacity', opacity);
+    return rect;
+}
+
+function drawDimensions(group, corpus) {
+    const w = corpus.width / scaleFactor;
+    const h = corpus.height / scaleFactor;
+    const t = corpus.thickness / scaleFactor;
+    const offset = 25;
+    const tickSize = 4;
+    createDimensionLine(group, -offset, 0, -offset, h, tickSize, corpus.height);
+    createDimensionLine(group, w + offset, t, w + offset, h - t, tickSize, corpus.height - 2 * corpus.thickness);
+    createDimensionLine(group, 0, -offset, w, -offset, tickSize, corpus.width);
+    createDimensionLine(group, t, h + offset, w - t, h + offset, tickSize, corpus.width - 2 * corpus.thickness);
+}
+
+function createDimensionLine(group, x1, y1, x2, y2, tickSize, label) {
+    const dimGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('class', 'dimension-line');
+    line.setAttribute('x1', x1); line.setAttribute('y1', y1); line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+    dimGroup.appendChild(line);
+    if (Math.abs(y2 - y1) > 0) { // Vertical line
+        const tick1 = document.createElementNS('http://www.w3.org/2000/svg', 'line'); tick1.setAttribute('class', 'dimension-line'); tick1.setAttribute('x1', x1 - tickSize); tick1.setAttribute('y1', y1); tick1.setAttribute('x2', x1 + tickSize); tick1.setAttribute('y2', y1); dimGroup.appendChild(tick1);
+        const tick2 = document.createElementNS('http://www.w3.org/2000/svg', 'line'); tick2.setAttribute('class', 'dimension-line'); tick2.setAttribute('x1', x2 - tickSize); tick2.setAttribute('y1', y2); tick2.setAttribute('x2', x2 + tickSize); tick2.setAttribute('y2', y2); dimGroup.appendChild(tick2);
+    } else { // Horizontal line
+        const tick1 = document.createElementNS('http://www.w3.org/2000/svg', 'line'); tick1.setAttribute('class', 'dimension-line'); tick1.setAttribute('x1', x1); tick1.setAttribute('y1', y1 - tickSize); tick1.setAttribute('x2', x1); tick1.setAttribute('y2', y1 + tickSize); dimGroup.appendChild(tick1);
+        const tick2 = document.createElementNS('http://www.w3.org/2000/svg', 'line'); tick2.setAttribute('class', 'dimension-line'); tick2.setAttribute('x1', x2); tick2.setAttribute('y1', y2 - tickSize); tick2.setAttribute('x2', x2); tick2.setAttribute('y2', y2 + tickSize); dimGroup.appendChild(tick2);
+    }
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text'); text.setAttribute('class', 'dimension-text'); text.setAttribute('x', (x1 + x2) / 2); text.setAttribute('y', (y1 + y2) / 2);
+    if (Math.abs(y2 - y1) > 0) {
+        text.setAttribute('transform', `rotate(-90, ${(x1 + x2) / 2}, ${(y1 + y2) / 2})`); text.setAttribute('dy', '-0.5em');
+    } else { text.setAttribute('dy', '-0.5em'); }
+    text.textContent = Math.round(label);
+    dimGroup.appendChild(text);
+    group.appendChild(dimGroup);
+}
+
+// --- Inspector Panel ---
+function showInspector(item) {
+    if (!item) return;
+    let contentHtml = '';
+    if (item.type === 'corpus') {
+        inspectorTitle.textContent = "Korpus Eigenschaften";
+        contentHtml = getCorpusInspectorHtml(item);
+    } else if (item.type === 'plinth') {
+        inspectorTitle.textContent = "Sockel Eigenschaften";
+        contentHtml = getPlinthInspectorHtml(item);
+    }
+    inspectorContent.innerHTML = `${contentHtml}
+        <hr class="my-6">
+        <button data-action="remove-item" data-item-id="${item.id}" data-item-type="${item.type}" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow"><i class="fas fa-trash-alt mr-2"></i> Element entfernen</button>
+    `;
+    inspectorPanel.classList.remove('translate-x-full');
+}
+
+function getCorpusInspectorHtml(corpus) {
+    const door = corpus.door;
+    const backPanel = corpus.backPanel;
+    const shelvesHtml = corpus.shelves.map((shelf, index) => `
+        <div class="p-3 border rounded-lg mt-2 bg-gray-50">
+            <p class="text-sm font-bold text-gray-600 mb-2">Boden ${index + 1}</p>
+            <div class="space-y-2">
+                ${createInputField(`Position von Unten (mm)`, 'yPositionFromBottom', shelf.yPositionFromBottom, corpus.id, 'shelf', shelf.id)}
+                ${createInputField(`Stärke (mm)`, 'thickness', shelf.thickness, corpus.id, 'shelf', shelf.id)}
+            </div>
+            <button data-action="remove-shelf" data-item-id="${corpus.id}" data-shelf-id="${shelf.id}" class="mt-3 w-full text-red-600 hover:text-red-800 text-xs font-semibold"><i class="fas fa-trash-alt mr-1"></i> Boden entfernen</button>
+        </div>`).join('');
+
+    return `
+        <div class="space-y-4">
+            ${createInputField('Höhe (mm)', 'height', corpus.height, corpus.id, 'item')}
+            ${createInputField('Breite (mm)', 'width', corpus.width, corpus.id, 'item')}
+            ${createInputField('Tiefe (mm)', 'depth', corpus.depth, corpus.id, 'item')}
+            ${createInputField('Plattenstärke (mm)', 'thickness', corpus.thickness, corpus.id, 'item')}
+            ${createColorField('Korpus Farbe', 'color', corpus.color, corpus.id, 'item')}
+        </div>
+        <hr class="my-6">
+        <h3 class="text-md font-bold text-gray-700 mb-2">Rückwand</h3>
+        <div class="space-y-4 p-3 border rounded-lg bg-gray-50">
+            ${createInputField('Materialstärke (mm)', 'thickness', backPanel.thickness, corpus.id, 'backPanel')}
+            ${createInputField('Offset hinten (mm)', 'offset', backPanel.offset, corpus.id, 'backPanel')}
+            ${createInputField('Nut-Tiefe (mm)', 'grooveDepth', backPanel.grooveDepth, corpus.id, 'backPanel')}
+        </div>
+        <hr class="my-6">
+        <h3 class="text-md font-bold text-gray-700 mb-2">Türen</h3>
+        <div class="space-y-4 p-3 border rounded-lg bg-gray-50">
+            ${createSelectField('Typ', 'type', door.type, corpus.id, 'door', [['none', 'Keine Tür'], ['one', '1 Flügel'], ['two', '2 Flügel']])}
+            <div id="door-options" class="${door.type === 'none' ? 'hidden' : ''}">
+                <div class="space-y-4 mt-4">
+                    ${createInputField('Offset Oben (mm)', 'offsetTop', door.offsetTop, corpus.id, 'door')}
+                    ${createInputField('Offset Unten (mm)', 'offsetBottom', door.offsetBottom, corpus.id, 'door')}
+                    ${createInputField('Offset Seite (mm)', 'offsetSide', door.offsetSide, corpus.id, 'door')}
+                    <div id="door-gap-option" class="${door.type !== 'two' ? 'hidden' : ''}">
+                        ${createInputField('Spaltmaß (mm)', 'gap', door.gap, corpus.id, 'door')}
+                    </div>
+                    ${createColorField('Türen Farbe', 'color', door.color, corpus.id, 'door')}
+                </div>
+            </div>
+        </div>
+        <hr class="my-6">
+        <h3 class="text-md font-bold text-gray-700 mb-2">Einlegeböden</h3>
+        <div id="shelves-container">${shelvesHtml}</div>
+        <button data-action="add-shelf" data-item-id="${corpus.id}" class="mt-4 w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg shadow text-sm"><i class="fas fa-plus mr-2"></i> Boden hinzufügen</button>
+    `;
+}
+
+function getPlinthInspectorHtml(plinth) {
+    return `
+        <div class="space-y-4">
+            ${createInputField('Höhe (mm)', 'height', plinth.height, plinth.id, 'item')}
+            ${createInputField('Breite (mm)', 'width', plinth.width, plinth.id, 'item')}
+            ${createInputField('Tiefe (mm)', 'depth', plinth.depth, plinth.id, 'item')}
+        </div>
+    `;
+}
+
+function createInputField(label, property, value, itemId, type, shelfId = null) {
+    const id = shelfId ? `${type}-${property}-${shelfId}` : `${type}-${property}-${itemId}`;
+    return `<div><label for="${id}" class="block text-sm font-medium text-gray-700">${label}</label>
+    <input type="number" id="${id}" name="${property}" value="${value}" data-type="${type}" data-item-id="${itemId}" ${shelfId ? `data-shelf-id="${shelfId}"` : ''}
+    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"></div>`;
+}
+
+function createColorField(label, property, value, itemId, type) {
+    const id = `${type}-${property}-${itemId}`;
+    return `<div><label for="${id}" class="block text-sm font-medium text-gray-700">${label}</label>
+    <input type="color" id="${id}" name="${property}" value="${value}" data-type="${type}" data-item-id="${itemId}" class="mt-1"></div>`;
+}
+
+function createSelectField(label, property, value, itemId, type, options) {
+    const id = `${type}-${property}-${itemId}`;
+    const optionsHtml = options.map(([val, text]) => `<option value="${val}" ${val === value ? 'selected' : ''}>${text}</option>`).join('');
+    return `<div><label for="${id}" class="block text-sm font-medium text-gray-700">${label}</label>
+    <select id="${id}" name="${property}" data-type="${type}" data-item-id="${itemId}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">${optionsHtml}</select></div>`;
+}
+
+function handleInspectorInput(e) {
+    const input = e.target;
+    const { type, itemId, shelfId } = input.dataset;
+    const property = input.name;
+    const value = input.type === 'color' ? input.value : (input.type === 'select-one' ? input.value : parseFloat(input.value));
+    
+    const item = items.find(i => i.id === parseInt(itemId));
+    if (!item || (input.type === 'number' && isNaN(value))) return;
+
+    if (type === 'item') {
+        item[property] = value;
+    } else if (type === 'door') {
+        item.door[property] = value;
+    } else if (type === 'backPanel') {
+        item.backPanel[property] = value;
+    } else if (type === 'shelf') {
+        const shelf = item.shelves.find(s => s.id === parseInt(shelfId));
+        if (shelf) shelf[property] = value;
+    }
+
+    if (property === 'type' && type === 'door') {
+        showInspector(item); 
+    } else {
+        render();
+    }
+}
+
+function handleInspectorClick(e) {
+    const button = e.target.closest('button');
+    if (!button) return;
+    const { action, itemId, itemType, shelfId } = button.dataset;
+    if (!action || !itemId) return;
+    const id = parseInt(itemId);
+    const item = items.find(i => i.id === id);
+
+    if (action === 'remove-item') {
+        items = items.filter(i => i.id !== id);
+        if (selectedItem.id === id) hideInspector();
+        render();
+    } else if (action === 'add-shelf' && item.type === 'corpus') {
+        item.shelves.push({ id: getNextId(), yPositionFromBottom: (item.height - 2 * item.thickness) / 3, thickness: 19 });
+        showInspector(item);
+    } else if (action === 'remove-shelf' && item.type === 'corpus') {
+        item.shelves = item.shelves.filter(s => s.id !== parseInt(shelfId));
+        showInspector(item);
+    }
+}
+
+function hideInspector() {
+    inspectorPanel.classList.add('translate-x-full');
+    if (selectedItem.id) {
+        selectedItem = { id: null, type: null };
+        render();
+    }
+}
+
+// --- Material List Logic ---
+function generateMaterialList() {
+    const parts = {};
+
+    function addPart(name, width, height, material, count = 1) {
+        const w = Math.round(width);
+        const h = Math.round(height);
+        if (w <= 0 || h <= 0) return;
+        const key = `${name}_${w}x${h}_${material}`;
+
+        if (parts[key]) {
+            parts[key].count += count;
+        } else {
+            parts[key] = { name, width: w, height: h, material, count: count };
+        }
+    }
+
+    items.forEach(item => {
+        if (item.type === 'corpus') {
+            const c = item;
+            const innerWidth = c.width - 2 * c.thickness;
+            const sidePanelHeight = c.height - 2 * c.thickness;
+            const shelfDepth = c.depth - c.backPanel.offset - c.backPanel.thickness;
+
+            addPart('Oberboden', c.width, c.depth, 'Korpus');
+            addPart('Unterboden', c.width, c.depth, 'Korpus');
+            addPart('Seitenwand', sidePanelHeight, c.depth, 'Korpus', 2);
+            
+            const backPanelWidth = innerWidth + 2 * c.backPanel.grooveDepth;
+            const backPanelHeight = sidePanelHeight + 2 * c.backPanel.grooveDepth;
+            addPart('Rückwand', backPanelWidth, backPanelHeight, 'Rückwand');
+
+            c.shelves.forEach(shelf => {
+                addPart('Einlegeboden', innerWidth, shelfDepth, 'Korpus');
+            });
+
+            if (c.door.type !== 'none') {
+                const doorHeight = c.height - c.door.offsetTop - c.door.offsetBottom;
+                if (c.door.type === 'one') {
+                    const doorWidth = c.width - 2 * c.door.offsetSide;
+                    addPart('Türflügel', doorWidth, doorHeight, 'Tür');
+                } else if (c.door.type === 'two') {
+                    const doorWidth = (c.width - 2 * c.door.offsetSide - c.door.gap) / 2;
+                    addPart('Türflügel', doorWidth, doorHeight, 'Tür', 2);
+                }
+            }
+        } else if (item.type === 'plinth') {
+            addPart('Sockelblende', item.width, item.height, 'Sockel');
+        }
+    });
+
+    return Object.values(parts);
+}
+
+function showMaterialModal() {
+    const list = generateMaterialList();
+    if (list.length === 0) {
+        materialListContent.innerHTML = `<p class="text-gray-500">Keine Elemente in der Planung vorhanden.</p>`;
+    } else {
+        const tableHtml = `
+            <table class="w-full text-left table-auto">
+                <thead>
+                    <tr class="bg-gray-100">
+                        <th class="p-2">Anzahl</th>
+                        <th class="p-2">Bezeichnung</th>
+                        <th class="p-2">Breite (mm)</th>
+                        <th class="p-2">Höhe/Tiefe (mm)</th>
+                        <th class="p-2">Material</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${list.map(p => `
+                        <tr class="border-b">
+                            <td class="p-2">${p.count}</td>
+                            <td class="p-2">${p.name}</td>
+                            <td class="p-2">${p.width}</td>
+                            <td class="p-2">${p.height}</td>
+                            <td class="p-2">${p.material}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        materialListContent.innerHTML = tableHtml;
+    }
+    materialModal.classList.remove('hidden');
+}
+
+function hideMaterialModal() {
+    materialModal.classList.add('hidden');
+}
+
+// --- Save & Load Logic ---
+function saveState() {
+    const state = {
+        items: items,
+        view: view,
+        nextId: nextId,
+        doorOpacity: doorOpacity
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "korpus-planung.json");
+    document.body.appendChild(downloadAnchorNode); // required for firefox
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+}
+
+function loadState(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const state = JSON.parse(e.target.result);
+            if (state && state.items && state.view && state.nextId) {
+                items = state.items;
+                view = state.view;
+                nextId = state.nextId;
+                doorOpacity = state.doorOpacity || 1.0;
+                doorOpacitySlider.value = doorOpacity;
+                
+                selectedItem = { id: null, type: null };
+                hideInspector();
+                render();
+            } else {
+                alert("Ungültige Speicherdatei.");
+            }
+        } catch (error) {
+            console.error("Fehler beim Laden der Datei:", error);
+            alert("Fehler beim Laden der Datei. Stellen Sie sicher, dass es eine gültige Planungsdatei ist.");
+        }
+    };
+    reader.readAsText(file);
+    loadInput.value = '';
+}
+
+
+// --- Drag, Pan, Zoom, Snap Logic ---
+function handleMouseDown(e) {
+    const targetGroup = e.target.closest('.draggable-group');
+    if (targetGroup) {
+        const { id, type } = targetGroup.dataset;
+        selectItem(parseInt(id), type);
+        
+        const item = items.find(i => i.id === parseInt(id));
+        activeDrag = {
+            id: item.id, type: item.type,
+            initialX: item.x, initialY: item.y,
+            startX: e.clientX, startY: e.clientY
+        };
+        workspace.style.cursor = 'grabbing';
+    } else {
+        isPanning = true;
+        startPoint = { x: e.clientX, y: e.clientY };
+        workspace.style.cursor = 'grabbing';
+        hideInspector();
+    }
+}
+
+function handleMouseMove(e) {
+    if (isPanning) {
+        view.tx += e.clientX - startPoint.x;
+        view.ty += e.clientY - startPoint.y;
+        startPoint = { x: e.clientX, y: e.clientY };
+        updateViewTransform();
+    } else if (activeDrag) {
+        const dx = (e.clientX - activeDrag.startX) / view.scale;
+        const dy = (e.clientY - activeDrag.startY) / view.scale;
+        let newX = activeDrag.initialX + dx;
+        let newY = activeDrag.initialY + dy;
+        
+        const draggedItem = items.find(i => i.id === activeDrag.id);
+        
+        clearSnapGuidelines();
+        const snapDist = snapThreshold / view.scale;
+        const draggedBounds = {
+            left: newX, top: newY,
+            right: newX + draggedItem.width / scaleFactor,
+            bottom: newY + draggedItem.height / scaleFactor
+        };
+        
+        items.forEach(staticItem => {
+            if (staticItem.id === draggedItem.id) return;
+            const staticBounds = {
+                left: staticItem.x, top: staticItem.y,
+                right: staticItem.x + staticItem.width / scaleFactor,
+                bottom: staticItem.y + staticItem.height / scaleFactor
+            };
+            
+            // X-axis snapping
+            if (Math.abs(draggedBounds.left - staticBounds.right) < snapDist) { newX = staticBounds.right; drawSnapLine(staticBounds.right, staticBounds.top, staticBounds.right, staticBounds.bottom); }
+            if (Math.abs(draggedBounds.right - staticBounds.left) < snapDist) { newX = staticBounds.left - draggedItem.width / scaleFactor; drawSnapLine(staticBounds.left, staticBounds.top, staticBounds.left, staticBounds.bottom); }
+            if (Math.abs(draggedBounds.left - staticBounds.left) < snapDist) { newX = staticBounds.left; drawSnapLine(staticBounds.left, staticBounds.top, staticBounds.left, staticBounds.bottom); }
+            if (Math.abs(draggedBounds.right - staticBounds.right) < snapDist) { newX = staticBounds.right - draggedItem.width / scaleFactor; drawSnapLine(staticBounds.right, staticBounds.top, staticBounds.right, staticBounds.bottom); }
+
+            // Y-axis snapping
+            if (Math.abs(draggedBounds.top - staticBounds.bottom) < snapDist) { newY = staticBounds.bottom; drawSnapLine(staticBounds.left, staticBounds.bottom, staticBounds.right, staticBounds.bottom); }
+            if (Math.abs(draggedBounds.bottom - staticBounds.top) < snapDist) { newY = staticBounds.top - draggedItem.height / scaleFactor; drawSnapLine(staticBounds.left, staticBounds.top, staticBounds.right, staticBounds.top); }
+            if (Math.abs(draggedBounds.top - staticBounds.top) < snapDist) { newY = staticBounds.top; drawSnapLine(staticBounds.left, staticBounds.top, staticBounds.right, staticBounds.top); }
+            if (Math.abs(draggedBounds.bottom - staticBounds.bottom) < snapDist) { newY = staticBounds.bottom - draggedItem.height / scaleFactor; drawSnapLine(staticBounds.left, staticBounds.bottom, staticBounds.right, staticBounds.bottom); }
+        });
+
+        draggedItem.x = newX;
+        draggedItem.y = newY;
+        render();
+    }
+}
+
+function handleMouseUp(e) {
+    activeDrag = null;
+    isPanning = false;
+    workspace.style.cursor = 'grab';
+    clearSnapGuidelines();
+}
+
+function handleWheel(e) {
+    e.preventDefault();
+    const CTM = workspace.getScreenCTM().inverse();
+    const pt = workspace.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const mousePos = pt.matrixTransform(CTM);
+    const zoom = Math.exp((e.deltaY < 0 ? 1 : -1) * 0.1);
+    view.tx = mousePos.x + (view.tx - mousePos.x) * zoom;
+    view.ty = mousePos.y + (view.ty - mousePos.y) * zoom;
+    view.scale *= zoom;
+    render();
+}
+
+function updateViewTransform() {
+    const transform = `translate(${view.tx}, ${view.ty}) scale(${view.scale})`;
+    canvasGroup.setAttribute('transform', transform);
+    guidelineGroup.setAttribute('transform', transform);
+}
+
+function drawSnapLine(x1,y1,x2,y2) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('class', 'snap-guideline');
+    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+    guidelineGroup.appendChild(line);
+}
+
+function clearSnapGuidelines() { guidelineGroup.innerHTML = ''; }
+
+function resetView() {
+    view.scale = 0.3;
+    view.tx = workspace.clientWidth / 4;
+    view.ty = 50;
+    render();
+}
+
+// --- Event Listeners ---
+addCorpusBtn.addEventListener('click', () => addNewItem('corpus'));
+addPlinthBtn.addEventListener('click', () => addNewItem('plinth'));
+closeInspectorBtn.addEventListener('click', hideInspector);
+resetViewBtn.addEventListener('click', resetView);
+inspectorContent.addEventListener('input', handleInspectorInput);
+inspectorContent.addEventListener('click', handleInspectorClick);
+workspace.addEventListener('mousedown', handleMouseDown);
+workspace.addEventListener('mousemove', handleMouseMove);
+workspace.addEventListener('mouseup', handleMouseUp);
+workspace.addEventListener('mouseleave', handleMouseUp);
+workspace.addEventListener('wheel', handleWheel);
+window.addEventListener('resize', resetView);
+showMaterialListBtn.addEventListener('click', showMaterialModal);
+closeMaterialModalBtn.addEventListener('click', hideMaterialModal);
+materialModal.addEventListener('click', (e) => {
+    if (e.target === materialModal) {
+        hideMaterialModal();
+    }
+});
+doorOpacitySlider.addEventListener('input', (e) => {
+    doorOpacity = parseFloat(e.target.value);
+    render();
+});
+saveBtn.addEventListener('click', saveState);
+loadBtn.addEventListener('click', () => loadInput.click());
+loadInput.addEventListener('change', loadState);
+
+
+// --- Initial State ---
+addNewItem('corpus');
+render();
+hideInspector();
+</script>
+</body>
+</html>
