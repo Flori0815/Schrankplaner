@@ -147,6 +147,10 @@ function addNewItem(type) {
             id: getNextId(), type: 'corpus', x: newX, y: newY,
             width: 1000, height: 2350, depth: 600, thickness: 19, shelves: [],
             color: '#FFFFFF',
+            joinery: {
+                bottom: 'sides_on_bottom', // Seiten auf Boden
+                top: 'top_on_sides' // Deckel auf Seiten
+            },
             door: { type: 'none', offsetTop: 2, offsetBottom: 2, offsetSide: 2, gap: 2, color: '#E2E8F0' },
             backPanel: { thickness: 3, offset: 10, grooveDepth: 5 }
         };
@@ -194,6 +198,33 @@ function drawCorpus(group, corpus) {
     const h = corpus.height / scaleFactor;
     const t = corpus.thickness / scaleFactor;
 
+    // --- Calculate panel dimensions based on joinery ---
+    // Bottom Panel
+    const bottomPanel = {
+        x: corpus.joinery.bottom === 'bottom_between_sides' ? t : 0,
+        y: h - t,
+        width: corpus.joinery.bottom === 'bottom_between_sides' ? w - 2 * t : w,
+        height: t
+    };
+    // Top Panel
+    const topPanel = {
+        x: corpus.joinery.top === 'top_between_sides' ? t : 0,
+        y: 0,
+        width: corpus.joinery.top === 'top_between_sides' ? w - 2 * t : w,
+        height: t
+    };
+    // Side Panels
+    let sidePanelY = 0;
+    let sidePanelH = h;
+    if (corpus.joinery.top === 'top_on_sides') {
+        sidePanelY = t;
+        sidePanelH -= t;
+    }
+    if (corpus.joinery.bottom === 'sides_on_bottom') {
+        sidePanelH -= t;
+    }
+
+    // --- Draw Panels ---
     group.appendChild(createRect('back-panel selection-highlight', t, t, w - 2 * t, h - 2 * t, corpus.color));
     
     corpus.shelves.forEach(shelf => {
@@ -202,10 +233,10 @@ function drawCorpus(group, corpus) {
         group.appendChild(createRect('shelf-panel', t, shelfY, w - 2 * t, shelfHeight, corpus.color));
     });
 
-    group.appendChild(createRect('panel selection-highlight', 0, h - t, w, t, corpus.color));
-    group.appendChild(createRect('panel selection-highlight', 0, t, t, h - 2 * t, corpus.color));
-    group.appendChild(createRect('panel selection-highlight', w - t, t, t, h - 2 * t, corpus.color));
-    group.appendChild(createRect('panel selection-highlight', 0, 0, w, t, corpus.color));
+    group.appendChild(createRect('panel selection-highlight', bottomPanel.x, bottomPanel.y, bottomPanel.width, bottomPanel.height, corpus.color));
+    group.appendChild(createRect('panel selection-highlight', topPanel.x, topPanel.y, topPanel.width, topPanel.height, corpus.color));
+    group.appendChild(createRect('panel selection-highlight', 0, sidePanelY, t, sidePanelH, corpus.color));
+    group.appendChild(createRect('panel selection-highlight', w - t, sidePanelY, t, sidePanelH, corpus.color));
 
     drawDoors(group, corpus);
 }
@@ -305,8 +336,7 @@ function showInspector(item) {
 }
 
 function getCorpusInspectorHtml(corpus) {
-    const door = corpus.door;
-    const backPanel = corpus.backPanel;
+    const { door, backPanel, joinery } = corpus;
     const shelvesHtml = corpus.shelves.map((shelf, index) => `
         <div class="p-3 border rounded-lg mt-2 bg-gray-50">
             <p class="text-sm font-bold text-gray-600 mb-2">Boden ${index + 1}</p>
@@ -317,6 +347,17 @@ function getCorpusInspectorHtml(corpus) {
             <button data-action="remove-shelf" data-item-id="${corpus.id}" data-shelf-id="${shelf.id}" class="mt-3 w-full text-red-600 hover:text-red-800 text-xs font-semibold"><i class="fas fa-trash-alt mr-1"></i> Boden entfernen</button>
         </div>`).join('');
 
+    const bottomJoineryOptions = [
+        ['sides_on_bottom', 'Seiten auf Boden'],
+        ['bottom_between_sides', 'Boden zwischen Seiten'],
+        ['special', 'Spezialverbindung']
+    ];
+    const topJoineryOptions = [
+        ['top_on_sides', 'Deckel auf Seiten'],
+        ['top_between_sides', 'Deckel zwischen Seiten'],
+        ['special', 'Spezialverbindung']
+    ];
+
     return `
         <div class="space-y-4">
             ${createInputField('Höhe (mm)', 'height', corpus.height, corpus.id, 'item')}
@@ -324,6 +365,12 @@ function getCorpusInspectorHtml(corpus) {
             ${createInputField('Tiefe (mm)', 'depth', corpus.depth, corpus.id, 'item')}
             ${createInputField('Plattenstärke (mm)', 'thickness', corpus.thickness, corpus.id, 'item')}
             ${createColorField('Korpus Farbe', 'color', corpus.color, corpus.id, 'item')}
+        </div>
+        <hr class="my-6">
+        <h3 class="text-md font-bold text-gray-700 mb-2">Konstruktion</h3>
+        <div class="space-y-4 p-3 border rounded-lg bg-gray-50">
+            ${createSelectField('Verbindung Unterboden', 'bottom', joinery.bottom, corpus.id, 'joinery', bottomJoineryOptions)}
+            ${createSelectField('Verbindung Oberboden', 'top', joinery.top, corpus.id, 'joinery', topJoineryOptions)}
         </div>
         <hr class="my-6">
         <h3 class="text-md font-bold text-gray-700 mb-2">Rückwand</h3>
@@ -400,6 +447,8 @@ function handleInspectorInput(e) {
         item.door[property] = value;
     } else if (type === 'backPanel') {
         item.backPanel[property] = value;
+    } else if (type === 'joinery') {
+        item.joinery[property] = value;
     } else if (type === 'shelf') {
         const shelf = item.shelves.find(s => s.id === parseInt(shelfId));
         if (shelf) shelf[property] = value;
@@ -461,16 +510,28 @@ function generateMaterialList() {
     items.forEach(item => {
         if (item.type === 'corpus') {
             const c = item;
-            const innerWidth = c.width - 2 * c.thickness;
-            const sidePanelHeight = c.height - 2 * c.thickness;
-            const shelfDepth = c.depth - c.backPanel.offset - c.backPanel.thickness;
+            
+            // --- Calculate part dimensions based on joinery ---
+            let bottomWidth = c.joinery.bottom === 'bottom_between_sides' ? c.width - 2 * c.thickness : c.width;
+            let topWidth = c.joinery.top === 'top_between_sides' ? c.width - 2 * c.thickness : c.width;
+            if (c.joinery.bottom === 'special') bottomWidth = c.width;
+            if (c.joinery.top === 'special') topWidth = c.width;
 
-            addPart('Oberboden', c.width, c.depth, 'Korpus');
-            addPart('Unterboden', c.width, c.depth, 'Korpus');
-            addPart('Seitenwand', sidePanelHeight, c.depth, 'Korpus', 2);
+            let sidePanelHeight = c.height;
+            if (c.joinery.top === 'top_on_sides') sidePanelHeight -= c.thickness;
+            if (c.joinery.bottom === 'sides_on_bottom') sidePanelHeight -= c.thickness;
+
+            const shelfDepth = c.depth - c.backPanel.offset - c.backPanel.thickness;
+            const innerWidth = c.width - 2 * c.thickness;
             
             const backPanelWidth = innerWidth + 2 * c.backPanel.grooveDepth;
-            const backPanelHeight = sidePanelHeight + 2 * c.backPanel.grooveDepth;
+            const backPanelHeight = sidePanelHeight + (c.joinery.top === 'top_on_sides' ? c.backPanel.grooveDepth : 0) + (c.joinery.bottom === 'sides_on_bottom' ? c.backPanel.grooveDepth : 0);
+
+
+            // --- Add parts to list ---
+            addPart('Unterboden', bottomWidth, c.depth, 'Korpus');
+            addPart('Oberboden', topWidth, c.depth, 'Korpus');
+            addPart('Seitenwand', sidePanelHeight, c.depth, 'Korpus', 2);
             addPart('Rückwand', backPanelWidth, backPanelHeight, 'Rückwand');
 
             c.shelves.forEach(shelf => {
@@ -561,6 +622,13 @@ function loadState(event) {
         try {
             const state = JSON.parse(e.target.result);
             if (state && state.items && state.view && state.nextId) {
+                // Add default values for new properties if loading old save file
+                state.items.forEach(item => {
+                    if (item.type === 'corpus' && !item.joinery) {
+                        item.joinery = { bottom: 'sides_on_bottom', top: 'top_on_sides' };
+                    }
+                });
+
                 items = state.items;
                 view = state.view;
                 nextId = state.nextId;
