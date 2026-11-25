@@ -10,6 +10,7 @@ export function defaultState() {
     topBoxMin: 150,            // ab dieser Resthöhe wird ein Aufsatzkorpus gebaut, sonst Blende
     topFront: 'cut',           // 'cut' = PAX-Tür 229 gekürzt, 'mpx' = Multiplex-Front
     doorStyle: 'forsand_w',
+    doorProfile: 'auto',       // 'auto' = wie Original-Modell, sonst flat/frame/grooves/mirror
     mat: {
       t: 18,                   // Multiplex Korpus
       backT: 6,                // Rückwand (Multiplex/HDF) in Nut

@@ -2,6 +2,12 @@
 // Weltkoordinaten: x entlang Hauptwand (0 = linke Wand), y von Hauptwand in den Raum, z Höhe.
 import { INTERIOR, DOOR_STYLES } from './catalog.js';
 
+export function styleProfile(s) {
+  const st = DOOR_STYLES[s.doorStyle] || DOOR_STYLES.forsand_w;
+  const p = s.doorProfile && s.doorProfile !== 'auto' ? s.doorProfile : st.profile;
+  return { type: p || 'flat', frameW: st.frameW || 70 };
+}
+
 export const RUN_KEYS = ['left', 'back', 'right'];
 export const RUN_NAMES = { left: 'Flanke links', back: 'Hauptwand', right: 'Flanke rechts' };
 
@@ -40,7 +46,7 @@ export function bedDims(s) {
   const fiW = b.matW + 2 * b.clear, fiL = b.matL + 2 * b.clear;
   const foW = fiW + 2 * b.frameT, foL = fiL + 2 * b.frameT;
   const minOuter = foW + 2 * b.mechClear + 2 * t;
-  const grid = +b.widthGrid || 0;
+  const grid = +b.widthGrid || 250;
   const outerW = grid ? Math.ceil(minOuter / grid - 1e-6) * grid : minOuter;
   return { fiW, fiL, foW, foL, innerW: outerW - 2 * t, outerW, minOuter, mechActual: (outerW - 2 * t - foW) / 2 };
 }
@@ -113,6 +119,8 @@ export function cornerExt(s, side) {
   }
 }
 
+export const onDoorGrid = Wd => Wd >= 249 && Math.abs(Wd / 250 - Math.round(Wd / 250)) * 250 < 1.5;
+
 export const blindOpen = (s, side) => +(s.corners[side === 'left' ? 'blindOpenL' : 'blindOpenR'] ?? s.corners.blindOpen);
 
 export function runRange(s, key) {
@@ -157,6 +165,8 @@ export function presetItems(s, sec, preset) {
 }
 
 export function normalize(s) {
+  if (s.bed.cladding === 'equal') s.bed.cladding = 'pax';
+  if (!+s.bed.widthGrid) s.bed.widthGrid = 250;
   if (s.bed.depthMode === 'min') for (const k of RUN_KEYS) if (s.runs[k].sections.some(x => x.type === 'bed')) s.runs[k].depth = bedMinDepth(s);
   for (const k of RUN_KEYS) for (const sec of s.runs[k].sections) {
     if (sec.type === 'pax' || sec.type === 'custom') {
@@ -344,23 +354,28 @@ export function buildScene(s) {
       if (sec.doors) {
         let ws;
         if (sec.type === 'pax') ws = sec.size === 50 ? [50] : sec.size === 75 ? (sec.hinge === 'R' ? [25, 50] : [50, 25]) : [50, 50];
-        else { const nd = +sec.nDoors > 0 ? +sec.nDoors : Math.max(1, Math.round(Wd / 500)); ws = Array(nd).fill('c'); }
+        else {
+          // Sonderbreite: nur Original-Türen, wenn die Breite ins 25-cm-Raster passt – sonst offen
+          ws = [];
+          if (onDoorGrid(Wd)) {
+            const n50 = Math.floor((Wd + 1) / 500);
+            ws = Array(n50).fill(50);
+            if (Wd - n50 * 500 >= 249) { if (sec.hinge === 'R') ws.unshift(25); else ws.push(25); }
+          } else el.noDoorReason = `Außenbreite ${Math.round(Wd)} mm liegt nicht im Türraster (Vielfache von 250 mm)`;
+        }
         const n = ws.length, e = (500 - P.doorW[50]) / 2;
-        const real = ws.map(w => w === 'c' ? (Wd - 2 * e - (n - 1) * 2 * e) / n : P.doorW[w]);
+        const real = ws.map(w => P.doorW[w]);
         const gap = n > 1 ? (Wd - 2 * e - real.reduce((a, b) => a + b, 0)) / (n - 1) : 0;
         let x = u0 + (n > 1 ? e : (Wd - real[0]) / 2);
-        if (sec.type === 'custom' && Math.abs(real[0] - P.doorW[50]) > 3) warn(`${label}: Front ${Math.round(real[0])} mm breit – weicht vom Türraster (${P.doorW[50]}) ab. Außenbreite auf ein Vielfaches von 500 setzen.`, id);
         real.forEach((w, j) => {
-          const hinge = (n % 2 === 1 && j === n - 1) ? (sec.hinge || 'L') : (j % 2 === 0 ? 'L' : 'R');
-          layout.push({ u0: x, u1: x + w, hinge, nominal: ws[j] === 'c' ? 50 : ws[j] });
+          const hinge = n === 1 ? (sec.hinge || 'L') : (j % 2 === 0 ? 'L' : 'R');
+          layout.push({ u0: x, u1: x + w, hinge, nominal: ws[j] });
           x += w + gap;
         });
-        if ((n > 1 && gap < 1) || real[0] > Wd - 2) warn(`${label}: Türen zu breit für Korpus`, id);
+        if (n && ((n > 1 && gap < 1) || real[0] > Wd - 2)) warn(`${label}: Türen zu breit für Korpus`, id);
         for (const dl of layout) {
-          const custom = sec.type !== 'pax';
-          door(fr, id, dl.u0, dl.u1, d.doorBot, d.doorH, D, dl.hinge, { kind: custom ? 'custom' : 'pax', color: style.color, label: custom ? `Sonderfront ${Math.round(dl.u1 - dl.u0)}` : `${style.name} ${dl.nominal}×${d.sizeKey}` });
-          if (custom) sc.buy.push({ group: 'Fronten', name: `Sonderfront ${Math.round(dl.u1 - dl.u0)}×${d.doorH} (z. B. PAX-Tür 50×${d.sizeKey} besäumen oder Multiplex)`, art: '', qty: 1 });
-          else sc.buy.push({ group: 'Fronten', name: `${style.name} Tür ${dl.nominal}×${d.sizeKey} cm`, art: style.art[`${dl.nominal}x${d.sizeKey}`] || 'nicht verfügbar', qty: 1 });
+          door(fr, id, dl.u0, dl.u1, d.doorBot, d.doorH, D, dl.hinge, { kind: 'pax', color: style.color, label: `${style.name} ${dl.nominal}×${d.sizeKey}` });
+          sc.buy.push({ group: 'Fronten', name: `${style.name} Tür ${dl.nominal}×${d.sizeKey} cm`, art: style.art[`${dl.nominal}x${d.sizeKey}`] || 'nicht verfügbar', qty: 1 });
           sc.buy.push({ group: 'Scharniere', name: 'hinge', art: 'hinge-main', qty: 1, hinge: true, main: true });
         }
       }
@@ -417,13 +432,14 @@ export function buildScene(s) {
     // Frontverkleidung im Türraster (am Bett befestigt) + feste Sockelblende darunter
     let cladVol = 0;
     if (clad) {
-      const lay = frontLayout(s, u0, Wd, b.cladding === 'equal' ? 'equal' : 'pax', 0);
+      const lay = frontLayout(s, u0, Wd, 'pax', 0);
+      if (!onDoorGrid(Wd)) warn('Klappbett: Schrankbreite nicht im Türraster – Bettfront deckt nicht sauber ab', id);
       const zc0 = M.edgeGap, zc1 = d.doorTop - hp;
       for (const f of lay.fronts) {
-        P_(f.u0 - uc, f.u1 - uc, 0, off, zc0, zc1, 'clad', null, 0, { color: style.color });
+        P_(f.u0 - uc, f.u1 - uc, 0, off, zc0, zc1, 'clad', null, 0, { color: style.color, profile: styleProfile(s) });
         cladVol += f.w * off * (zc1 - zc0) / 1e9;
         const nom = Math.abs(f.w - P.doorW[25]) < 2 ? 25 : 50;
-        const pax = b.cladding !== 'equal' && Math.abs(f.w - P.doorW[nom]) < 2;
+        const pax = true;
         sc.buy.push({ group: 'Klappbett', name: pax ? `Bettfront: ${style.name} Tür ${nom}×229 auf ${Math.round(zc1 - zc0)} mm kürzen (Abschnitt für Sockelblende nutzen)` : `Bettfront Sonderfront ${Math.round(f.w)}×${Math.round(zc1 - zc0)}`, art: pax ? (style.art[`${nom}x229`] || '–') : '', qty: 1 });
       }
       const lb1 = hp - M.edgeGap;
@@ -438,7 +454,7 @@ export function buildScene(s) {
     sc.beds.push({ id, run: fr.key, frame: fr, uc, hp, dp, parts, legs, foL: bd.foL, label: el.label });
     // Geschlossene Lage als Boxen (2D, Zuschnitt)
     for (const p of parts) {
-      boxR(fr, uc + p.X0, uc + p.X1, hp + p.Z0, hp + p.Z1, dp - p.Y1, dp - p.Y0, { mat: p.mat, color: p.color, elemId: id, cut: p.cut, bedPart: true });
+      boxR(fr, uc + p.X0, uc + p.X1, hp + p.Z0, hp + p.Z1, dp - p.Y1, dp - p.Y0, { mat: p.mat, color: p.color, profile: p.profile, elemId: id, cut: p.cut, bedPart: true });
     }
     sc.buy.push({ group: 'Holz', name: `Auflageleiste 24×${Math.round(yr - zt)} mm, Länge ${Math.round(bd.foL - 2 * ft)} mm`, art: '', qty: b.rost === '2x80' ? 3 : 2 });
     // Prüfungen
@@ -606,6 +622,8 @@ export function buildScene(s) {
       }
     }
   }
+  const prof = styleProfile(s);
+  for (const dr of sc.doors) dr.profile = prof;
   if (d.topMode === 'box' && s.concept === '229') warn('Aufsatz über 236er-Korpus – Raumhöhe prüfen');
   return sc;
 }

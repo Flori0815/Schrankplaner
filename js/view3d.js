@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { MAT } from './svg2d.js';
+import { MAT, profileParts } from './svg2d.js';
 
 export class View3D {
   constructor(el, onPick) {
@@ -64,6 +64,16 @@ export class View3D {
     }
     return m;
   }
+  detailMesh(sx, sy, sz, color, kind, elemId) {
+    let mat;
+    if (kind === 'glass') mat = this.glassMat || (this.glassMat = new THREE.MeshStandardMaterial({ color: '#cfe0e8', metalness: 0.9, roughness: 0.08 }));
+    else if (kind === 'groove') mat = this.mat(new THREE.Color(color).multiplyScalar(0.7).getStyle());
+    else mat = this.mat(new THREE.Color(color).multiplyScalar(0.96).getStyle());
+    const geo = new THREE.BoxGeometry(Math.max(sx, 0.5), Math.max(sy, 0.5), Math.max(sz, 0.5));
+    const m = new THREE.Mesh(geo, mat); m.userData.elemId = elemId;
+    if (kind === 'bar') m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), this.edgeMat || (this.edgeMat = new THREE.LineBasicMaterial({ color: 0x5a4a33, transparent: true, opacity: 0.35 }))));
+    return m;
+  }
   update(s, sc, selId) {
     this.clear();
     const W = s.room.back, H = s.room.height;
@@ -96,6 +106,15 @@ export class View3D {
       const m = this.boxMesh(alongX ? dr.w : dr.t, dr.h, alongX ? dr.t : dr.w, dr.color, dr.elemId);
       m.position.set(dr.s[0] * dr.w / 2 + dr.n[0] * dr.t / 2, dr.h / 2, dr.s[1] * dr.w / 2 + dr.n[1] * dr.t / 2);
       piv.add(m);
+      // Profil: a entlang s, b nach oben, z nach außen (n) ab Türvorderseite
+      for (const q of profileParts(dr.profile, dr.w, dr.h)) {
+        const xs = [q.a0, q.a1].map(a => [dr.s[0] * a, dr.s[1] * a]);
+        const zs = [dr.t + q.z0, dr.t + q.z1].map(z => [dr.n[0] * z, dr.n[1] * z]);
+        const X = [xs[0][0] + zs[0][0], xs[1][0] + zs[1][0]], Z = [xs[0][1] + zs[0][1], xs[1][1] + zs[1][1]];
+        const dm = this.detailMesh(Math.abs(X[1] - X[0]), q.b1 - q.b0, Math.abs(Z[1] - Z[0]), dr.color, q.kind, dr.elemId);
+        dm.position.set((X[0] + X[1]) / 2, (q.b0 + q.b1) / 2, (Z[0] + Z[1]) / 2);
+        piv.add(dm);
+      }
       const rot = [dr.s[1], -dr.s[0]];
       piv.userData.sign = (Math.abs(rot[0] - dr.n[0]) < 1e-6 && Math.abs(rot[1] - dr.n[1]) < 1e-6) ? 1 : -1;
       piv.visible = this.showDoors;
@@ -114,6 +133,11 @@ export class View3D {
         const m = this.boxMesh(p.X1 - p.X0, p.Y1 - p.Y0, p.Z1 - p.Z0, color, bed.id);
         m.position.set((p.X0 + p.X1) / 2, (p.Y0 + p.Y1) / 2, (p.Z0 + p.Z1) / 2);
         piv.add(m);
+        for (const q of profileParts(p.profile, p.X1 - p.X0, p.Z1 - p.Z0)) {
+          const dm = this.detailMesh(q.a1 - q.a0, q.z1 - q.z0, q.b1 - q.b0, color, q.kind, bed.id);
+          dm.position.set(p.X0 + (q.a0 + q.a1) / 2, p.Y0 - (q.z0 + q.z1) / 2, p.Z0 + (q.b0 + q.b1) / 2);
+          piv.add(dm);
+        }
       }
       const legs = new THREE.Group();
       for (const [x0, x1] of bed.legs) {

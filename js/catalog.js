@@ -2,19 +2,22 @@
 // sofern nicht anders angegeben). Preise sind in der Kaufhilfe nicht enthalten.
 
 export const DOOR_STYLES = {
-  forsand_w:   { name: 'FORSAND weiß', color: '#f3f2ee', art: { '50x195': '403.910.92', '50x229': '603.910.91', '25x195': '204.236.02', '25x229': '804.236.04' } },
-  forsand_ew:  { name: 'FORSAND Eicheneffekt weiß lasiert', color: '#dccdb3', art: { '50x195': '904.349.61', '50x229': '304.349.64', '25x195': '004.848.80', '25x229': '804.848.81' } },
-  forsand_gb:  { name: 'FORSAND graubeige', color: '#bdb3a2', art: { '50x195': '905.109.26', '50x229': '905.109.31', '25x195': '306.329.64', '25x229': '806.329.66' } },
-  forsand_dg:  { name: 'FORSAND dunkelgrau', color: '#5d5f60', art: { '50x195': '405.109.24', '50x229': '505.109.28', '25x195': '506.329.63', '25x229': '006.329.65' } },
-  bergsbo_w:   { name: 'BERGSBO weiß', color: '#f5f5f2', art: { '50x195': '202.074.10', '50x229': '301.604.07' } },
-  grimo_w:     { name: 'GRIMO weiß', color: '#f4f4f1', art: { '50x195': '403.434.64', '50x229': '903.434.66' } },
-  fardal_hw:   { name: 'FARDAL Hochglanz weiß', color: '#fbfbfb', art: { '50x195': '901.905.24', '50x229': '801.905.29', '25x195': '703.446.26', '25x229': '503.446.27' } },
-  aheim:       { name: 'ÅHEIM Spiegeltür', color: '#c9d6dc', art: { '50x195': '803.319.30', '50x229': '804.100.55', '25x195': '204.148.29', '25x229': '004.148.30' } },
-  tyssedal_w:  { name: 'TYSSEDAL weiß', color: '#f6f5f1', art: { '50x195': '902.981.24', '50x229': '402.981.26' } },
-  reinsvoll_gb:{ name: 'REINSVOLL graubeige', color: '#b8ad9b', art: { '50x195': '004.731.41', '50x229': '604.731.38' } },
-  tonstad_ew:  { name: 'TONSTAD elfenbeinweiß', color: '#eee9dc', art: { '50x195': '705.102.44', '50x229': '905.102.43' } },
-  bjorneskogen:{ name: 'BJÖRNESKOGEN Nussbaumfurnier', color: '#7a5539', art: { '50x195': '105.966.41', '50x229': '505.966.39' } },
+  forsand_w:   { profile: 'flat', name: 'FORSAND weiß', color: '#f3f2ee', art: { '50x195': '403.910.92', '50x229': '603.910.91', '25x195': '204.236.02', '25x229': '804.236.04' } },
+  forsand_ew:  { profile: 'flat', name: 'FORSAND Eicheneffekt weiß lasiert', color: '#dccdb3', art: { '50x195': '904.349.61', '50x229': '304.349.64', '25x195': '004.848.80', '25x229': '804.848.81' } },
+  forsand_gb:  { profile: 'flat', name: 'FORSAND graubeige', color: '#bdb3a2', art: { '50x195': '905.109.26', '50x229': '905.109.31', '25x195': '306.329.64', '25x229': '806.329.66' } },
+  forsand_dg:  { profile: 'flat', name: 'FORSAND dunkelgrau', color: '#5d5f60', art: { '50x195': '405.109.24', '50x229': '505.109.28', '25x195': '506.329.63', '25x229': '006.329.65' } },
+  bergsbo_w:   { profile: 'frame', name: 'BERGSBO weiß', color: '#f5f5f2', art: { '50x195': '202.074.10', '50x229': '301.604.07' } },
+  grimo_w:     { profile: 'grooves', name: 'GRIMO weiß', color: '#f4f4f1', art: { '50x195': '403.434.64', '50x229': '903.434.66' } },
+  fardal_hw:   { profile: 'flat', name: 'FARDAL Hochglanz weiß', color: '#fbfbfb', art: { '50x195': '901.905.24', '50x229': '801.905.29', '25x195': '703.446.26', '25x229': '503.446.27' } },
+  aheim:       { profile: 'mirror', name: 'ÅHEIM Spiegeltür', color: '#c9d6dc', art: { '50x195': '803.319.30', '50x229': '804.100.55', '25x195': '204.148.29', '25x229': '004.148.30' } },
+  tyssedal_w:  { profile: 'frame', name: 'TYSSEDAL weiß', color: '#f6f5f1', art: { '50x195': '902.981.24', '50x229': '402.981.26' } },
+  reinsvoll_gb:{ profile: 'flat', name: 'REINSVOLL graubeige', color: '#b8ad9b', art: { '50x195': '004.731.41', '50x229': '604.731.38' } },
+  tonstad_ew:  { profile: 'frame', name: 'TONSTAD elfenbeinweiß', color: '#eee9dc', art: { '50x195': '705.102.44', '50x229': '905.102.43' } },
+  gullaberg_w: { profile: 'frame', frameW: 95, name: 'GULLABERG weiß', color: '#f4f3ef', art: { '50x195': '405.806.67', '50x229': '805.806.65' } },
+  bjorneskogen:{ profile: 'grooves', name: 'BJÖRNESKOGEN Nussbaumfurnier', color: '#7a5539', art: { '50x195': '105.966.41', '50x229': '505.966.39' } },
 };
+
+export const PROFILES = { flat: 'glatt', frame: 'Rahmen mit Füllung', grooves: 'senkrechte Rillen', mirror: 'Spiegel mit Rahmen' };
 
 export const HINGES = {
   '195': { name: 'KOMPLEMENT Scharnier, sanft schließend (3 St.) – für 195er Türen', art: '002.145.05', pack: 3 },
