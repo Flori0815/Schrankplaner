@@ -1,5 +1,5 @@
 import { defaultState, loadLocal, saveLocal, migrate, uid } from './state.js';
-import { buildScene, derive, normalize, presetItems, PRESETS, RUN_KEYS, RUN_NAMES, runRange, sectionWidth, sectionLabel, holeZs, bedDims, rearRow } from './build.js';
+import { buildScene, derive, normalize, presetItems, PRESETS, RUN_KEYS, RUN_NAMES, runRange, sectionWidth, sectionLabel, holeZs, bedDims, rearRow, bedMinDepth } from './build.js';
 import { cutList, shopList, drillData, toCSV } from './lists.js';
 import { renderFront, renderTop, renderDrill, panZoom } from './svg2d.js';
 import { DOOR_STYLES, INTERIOR } from './catalog.js';
@@ -37,15 +37,15 @@ function renderSide() {
     <span>Korpus OK</span><b>${r0(d.Htot)} mm</b><span>Tür (${d.sizeKey})</span><b>${d.doorH} mm, UK ${r0(d.doorBot)}</b>
     <span>${d.topMode === 'box' ? 'Aufsatz' : 'Zierleiste'}</span><b>${r0(d.Ht)} mm</b><span>Innenhöhe</span><b>${r0(d.intH)} mm</b></div>
     ${selF('Türmodell', 'doorStyle', Object.entries(DOOR_STYLES).map(([k, v]) => [k, v.name]))}</details>
-  <details open><summary>Zeilen & Korpusse</summary>`;
+  <details open><summary>Zeilen & Korpusse</summary><datalist id="depths"><option value="580"><option value="350"></datalist>`;
   for (const k of RUN_KEYS) {
     const run = S.runs[k], dm = sc.dims[k];
     h += `<div class="run"><h4>${RUN_NAMES[k]} <button class="mini" data-act="autofill" data-run="${k}" title="Mit PAX-Korpussen auffüllen">Auto</button></h4>
-      ${selF('Tiefe', `runs.${k}.depth`, [[580, '58 cm (PAX)'], [350, '35 cm (PAX)'], [450, '45 cm (Sonder)']])}
+      ${run.sections.some(x => x.type === 'bed') && S.bed.depthMode === 'min' ? `<div class="f"><label>Tiefe</label><b>${run.depth} (Bett-Minimum)</b></div>` : num('Tiefe (580 / 350 = PAX)', `runs.${k}.depth`, 5, 'list="depths"')}
       ${selF('Ausrichtung', `runs.${k}.align`, [['start', 'links bündig'], ['center', 'mittig'], ['end', 'rechts bündig']])}
       <div class="info">Verfügbar ${r0(dm.len)} · belegt ${r0(dm.total)} · <b class="${dm.free < 0 ? 'warn' : ''}">Rest ${r0(dm.free)} mm</b></div>`;
     run.sections.forEach((sec, i) => {
-      h += `<div class="sec ${sel === sec.id ? 'sel' : ''}" data-act="select" data-id="${sec.id}"><span>${i + 1}. ${esc(sectionLabel(S, sec))} <small class="info">${r0(sectionWidth(S, sec))}</small></span>
+      h += `<div class="sec ${sel === sec.id ? 'sel' : ''}" data-act="select" data-id="${sec.id}"><span>${i + 1}. ${esc(sectionLabel(S, sec))} ${sec.type === 'custom' || sec.type === 'filler' ? `<input class="w" type="number" data-path="runs.${k}.sections.${i}.outer" data-outer="1" value="${r0(sectionWidth(S, sec))}" title="Außenbreite">` : `<small class="info">${r0(sectionWidth(S, sec))}</small>`}</span>
         <button class="mini" data-act="up" data-id="${sec.id}">↑</button><button class="mini" data-act="down" data-id="${sec.id}">↓</button><button class="mini" data-act="del" data-id="${sec.id}">✕</button></div>`;
     });
     h += `<div class="addrow">${[50, 75, 100].map(z => `<button class="mini" data-act="add" data-run="${k}" data-type="pax" data-size="${z}">+${z}</button>`).join('')}
@@ -79,7 +79,7 @@ function renderSide() {
 function bedFields() {
   const el = sc.elements.find(e => e.kind === 'bed');
   const bd = bedDims(S);
-  return `${num('Matratze Breite', 'bed.matW')}${num('Matratze Länge', 'bed.matL')}${num('Matratze Höhe', 'bed.matH')}${num('Luft um Matratze', 'bed.clear')}
+  return `${selF('Tiefe Bettzeile', 'bed.depthMode', [['min', `minimal für Bett (${bedMinDepth(S)} mm)`], ['run', 'frei (Zeilentiefe)']])}${num('Matratze Breite', 'bed.matW')}${num('Matratze Länge', 'bed.matL')}${num('Matratze Höhe', 'bed.matH')}${num('Luft um Matratze', 'bed.clear')}
     ${selF('Lattenrost', 'bed.rost', [['2x80', '2 × 80×200 (mit Mittelauflage)'], ['1x160', '1 × 160×200']])}
     ${num('Lattenrost Höhe', 'bed.rostH')}${num('Luftspalt unter Rost', 'bed.airGap')}
     ${num('Rahmen Multiplex', 'bed.frameT')}${num('Zargenhöhe', 'bed.frameH')}${num('Bodenplatte/Front', 'bed.frontT')}
@@ -113,10 +113,11 @@ function renderInspector() {
     if (sec.type === 'pax' || sec.type === 'custom') {
       h += selF('Typ', `${p}.type`, [['pax', 'PAX-Raster (KOMPLEMENT passt)'], ['custom', 'Sonderbreite (Eigenbau-Innenleben)']]);
       if (sec.type === 'pax') h += selF('Breite', `${p}.size`, [[50, '50 cm'], [75, '75 cm'], [100, '100 cm']]);
-      else h += num('Innenbreite', `${p}.innerW`);
+      else h += `<div class="f"><label>Außenbreite</label><input type="number" data-path="${p}.outer" data-outer="1" value="${r0(el.u1 - el.u0)}"></div>` + num('Innenbreite', `${p}.innerW`);
       h += chk('Türen', `${p}.doors`);
-      if (sec.doors && (sec.type === 'custom')) h += selF('Anzahl Fronten', `${p}.nDoors`, [[1, '1'], [2, '2']]);
-      if (sec.doors && ((sec.type === 'pax' && sec.size !== 100) || (sec.type === 'custom' && sec.nDoors != 2))) h += selF(sec.size === 75 ? '50er Tür' : 'Anschlag', `${p}.hinge`, [['L', 'links'], ['R', 'rechts']]);
+      if (sec.doors && sec.type === 'custom') { if (sec.nDoors === undefined) sec.nDoors = 0; h += selF('Anzahl Fronten', `${p}.nDoors`, [[0, `automatisch (${el.doorLayout.length})`], [1, '1'], [2, '2'], [3, '3'], [4, '4']]); }
+      if (sec.doors && el.doorLayout.length % 2 === 1 && !(sec.type === 'pax' && sec.size === 100)) h += selF(sec.size === 75 ? '50er Tür' : 'Anschlag', `${p}.hinge`, [['L', 'links'], ['R', 'rechts']]);
+      if (sec.doors && sec.type === 'custom') h += `<div class="info">Fronten je ${el.doorLayout.length ? r0(el.doorLayout[0].u1 - el.doorLayout[0].u0) : 0} mm breit – ${el.doorLayout.length && el.doorLayout[0].u1 - el.doorLayout[0].u0 <= S.pax.doorW[50] ? 'aus PAX-Tür 50 besäumbar' : 'Multiplex-Sonderfront'}.</div>`;
       const inner = el.inner, d = sc.d;
       h += `<div class="kv"><span>Außen</span><b>${r0(el.u1 - el.u0)} × ${el.D}</b><span>Innen B × H</span><b>${r0(inner.u1 - inner.u0)} × ${r0(inner.z1 - inner.z0)}</b><span>Nutzbare Tiefe</span><b>${r0(inner.d1 - inner.d0)}</b><span>Lochreihen</span><b>${S.pax.hole.front} / ${rearRow(S, el.D)}</b></div>`;
       h += `<h3>Inneneinrichtung</h3><div class="presets">${Object.entries(PRESETS).map(([k, v]) => `<button class="mini" data-act="preset" data-id="${sec.id}" data-p="${k}">${v}</button>`).join('')}</div>`;
@@ -205,7 +206,8 @@ function onChange(e) {
   const path = t.dataset.path; if (!path) return;
   let v = t.type === 'checkbox' ? t.checked : t.value;
   const old = getP(path);
-  if (t.type === 'number' || typeof old === 'number') { v = parseFloat(v); if (!isFinite(v)) return; }
+  if (t.type === 'number' || typeof old === 'number' || (t.tagName === 'SELECT' && typeof old !== 'string' && /^-?\d+(\.\d+)?$/.test(v))) { v = parseFloat(v); if (!isFinite(v)) return; }
+  if (t.dataset.outer) { applyOuter(path, v); renderAll(); return; }
   setP(path, v);
   if (path.endsWith('.type') && path.includes('.sections.') && !path.includes('.items.')) {
     const sec = getP(path.replace(/\.type$/, ''));
@@ -218,7 +220,35 @@ function onChange(e) {
 }
 document.addEventListener('change', onChange);
 
+// Außenbreite einer Sonder-/Blendensektion setzen
+function applyOuter(path, v) {
+  const sec = getP(path.replace(/\.outer$/, ''));
+  if (sec.type === 'custom') sec.innerW = Math.max(20, v - 2 * S.mat.t);
+  else if (sec.type === 'filler') sec.w = Math.max(1, v);
+}
+// Live-Aktualisierung beim Tippen in Zahlenfeldern
+let liveT = null;
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.type !== 'number' || !t.dataset.path || t.dataset.path.startsWith('view.')) return;
+  const v = parseFloat(t.value); if (!isFinite(v)) return;
+  clearTimeout(liveT);
+  liveT = setTimeout(() => {
+    if (t.dataset.outer) applyOuter(t.dataset.path, v); else setP(t.dataset.path, v);
+    normalize(S); sc = buildScene(S); drills = drillData(sc, S); saveLocal(S); renderView();
+  }, 250);
+});
+
 document.addEventListener('click', e => {
+  if (e.target.matches('input, select, option')) {
+    const row = e.target.closest('.sec[data-id]');
+    if (row && sel !== row.dataset.id) {
+      sel = row.dataset.id;
+      side.querySelectorAll('.sec').forEach(x => x.classList.toggle('sel', x === row));
+      renderInspector(); renderView();
+    }
+    return;
+  }
   const b = e.target.closest('[data-act],[data-tab]');
   const svg = e.target.closest('svg.draw');
   if (svg && svg.dataset.dragged) return;
@@ -240,7 +270,7 @@ document.addEventListener('click', e => {
       const run = S.runs[b.dataset.run];
       const sec = { id: uid(), type: b.dataset.type };
       if (sec.type === 'pax') Object.assign(sec, { size: +b.dataset.size, doors: true, hinge: 'L' });
-      if (sec.type === 'custom') Object.assign(sec, { innerW: 400, doors: true, nDoors: 1, hinge: 'L' });
+      if (sec.type === 'custom') Object.assign(sec, { innerW: 400, doors: true, nDoors: 0, hinge: 'L' });
       if (sec.type === 'filler') sec.w = 50;
       if (sec.type === 'pax' || sec.type === 'custom') sec.items = presetItems(S, sec, sec.type === 'pax' ? 'shirts' : 'shelves');
       run.sections.push(sec); sel = sec.id; break;
