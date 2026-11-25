@@ -6,7 +6,7 @@ export function defaultState() {
   return {
     version: 2,
     room: { height: 2450, ceilingGap: 10, left: 1200, back: 3400, right: 2400 },
-    concept: '195',            // '195' = PAX 201 + Aufsatz, '229' = PAX 236 + Deckenblende
+    concept: '229',            // '229' = PAX 236 + Zierleiste, '195' = PAX 201 + Aufsatzkorpus
     topBoxMin: 150,            // ab dieser Resthöhe wird ein Aufsatzkorpus gebaut, sonst Blende
     topFront: 'cut',           // 'cut' = PAX-Tür 229 gekürzt, 'mpx' = Multiplex-Front
     doorStyle: 'forsand_w',
@@ -16,8 +16,9 @@ export function defaultState() {
       grooveDepth: 8,          // Nuttiefe
       grooveInset: 12,         // Abstand Hinterkante -> Nut
       doorT: 20,               // Türstärke (für Darstellung)
-      plinthInset: 25,         // Rücksprung Sockelblende
-      plinthBack: true,        // hintere Sockelleiste
+      frameInset: 25,          // Rücksprung Sockelrahmen vorne
+      frameCross: 600,         // max. Abstand Querriegel Sockelrahmen
+      crownT: 18,              // Zierleiste Stärke
       density: 680,            // kg/m³ Birke-Multiplex
       edgeGap: 3,              // Fuge Front/Front
     },
