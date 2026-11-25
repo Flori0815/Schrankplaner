@@ -63,6 +63,9 @@ svg .hit { fill: transparent; stroke: none; cursor: pointer; }
 svg .hit.selected { fill: rgba(37, 99, 235, .07); stroke: var(--acc); stroke-width: 10; stroke-dasharray: 40 20; }
 svg .door rect { stroke: #555; stroke-width: 4; }
 svg .door.sel rect { stroke: var(--acc); stroke-width: 10; }
+svg .pbar { fill: rgba(0,0,0,.035); stroke: #888; stroke-width: 3; }
+svg .pgroove { stroke: #999; stroke-width: 4; }
+svg .pglass { fill: #cfe0e8; stroke: #999; stroke-width: 3; }
 svg .swing { fill: none; stroke: #888; stroke-width: 3; stroke-dasharray: 25 15; }
 svg .hang { fill: rgba(120, 140, 170, .12); stroke: rgba(120, 140, 170, .5); stroke-width: 3; stroke-dasharray: 20 12; }
 svg .floorplan { fill: var(--wall); }

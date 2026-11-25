@@ -2,7 +2,7 @@ import { defaultState, loadLocal, saveLocal, migrate, uid } from './state.js';
 import { buildScene, derive, normalize, presetItems, PRESETS, RUN_KEYS, RUN_NAMES, runRange, sectionWidth, sectionLabel, holeZs, bedDims, rearRow, bedMinDepth } from './build.js';
 import { cutList, shopList, drillData, toCSV } from './lists.js';
 import { renderFront, renderTop, renderDrill, panZoom } from './svg2d.js';
-import { DOOR_STYLES, INTERIOR } from './catalog.js';
+import { DOOR_STYLES, INTERIOR, PROFILES } from './catalog.js';
 
 let S = loadLocal() || defaultState();
 normalize(S);
@@ -36,7 +36,8 @@ function renderSide() {
     <div class="kv"><span>Sockelrahmen</span><b>${r0(d.plinth)} mm</b><span>Korpuskasten</span><b>${r0(d.Htot - d.plinth)} mm</b>
     <span>Korpus OK</span><b>${r0(d.Htot)} mm</b><span>Tür (${d.sizeKey})</span><b>${d.doorH} mm, UK ${r0(d.doorBot)}</b>
     <span>${d.topMode === 'box' ? 'Aufsatz' : 'Zierleiste'}</span><b>${r0(d.Ht)} mm</b><span>Innenhöhe</span><b>${r0(d.intH)} mm</b></div>
-    ${selF('Türmodell', 'doorStyle', Object.entries(DOOR_STYLES).map(([k, v]) => [k, v.name]))}</details>
+    ${selF('Türmodell', 'doorStyle', Object.entries(DOOR_STYLES).map(([k, v]) => [k, `${v.name} (${PROFILES[v.profile]})`]))}
+    ${selF('Türprofil', 'doorProfile', [['auto', 'wie Original-Modell'], ...Object.entries(PROFILES)])}</details>
   <details open><summary>Zeilen & Korpusse</summary><datalist id="depths"><option value="580"><option value="350"></datalist>`;
   for (const k of RUN_KEYS) {
     const run = S.runs[k], dm = sc.dims[k];
@@ -91,8 +92,8 @@ function restButtons(k, free) {
 function bedFields() {
   const el = sc.elements.find(e => e.kind === 'bed');
   const bd = bedDims(S);
-  return `${selF('Bettfront', 'bed.cladding', [['pax', 'PAX-Türen (50/25) gekürzt, wie Schrank'], ['equal', 'gleich breite Sonderfronten'], ['none', 'ohne Verkleidung']])}
-    ${selF('Schrankbreite', 'bed.widthGrid', [[250, 'auf 25-cm-Raster (passend zu PAX-Türen)'], [500, 'auf 50-cm-Raster (nur 50er Türen)'], [0, 'minimal']])}
+  return `${selF('Bettfront', 'bed.cladding', [['pax', 'PAX-Türen (50/25) in der Höhe gekürzt'], ['none', 'ohne Verkleidung']])}
+    ${selF('Schrankbreite', 'bed.widthGrid', [[250, 'auf 25-cm-Raster (passend zu PAX-Türen)'], [500, 'auf 50-cm-Raster (nur 50er Türen)']])}
     ${selF('Tiefe Bettzeile', 'bed.depthMode', [['min', `minimal für Bett (${bedMinDepth(S)} mm)`], ['run', 'frei (Zeilentiefe)']])}${num('Matratze Breite', 'bed.matW')}${num('Matratze Länge', 'bed.matL')}${num('Matratze Höhe', 'bed.matH')}${num('Luft um Matratze', 'bed.clear')}
     ${selF('Lattenrost', 'bed.rost', [['2x80', '2 × 80×200 (mit Mittelauflage)'], ['1x160', '1 × 160×200']])}
     ${num('Lattenrost Höhe', 'bed.rostH')}${num('Luftspalt unter Rost', 'bed.airGap')}
@@ -130,10 +131,11 @@ function renderInspector() {
       if (sec.type === 'pax') h += selF('Breite', `${p}.size`, [[50, '50 cm'], [75, '75 cm'], [100, '100 cm']]);
       else h += `<div class="f"><label>Außenbreite</label><input type="number" data-path="${p}.outer" data-outer="1" value="${r0(el.u1 - el.u0)}"></div>` + num('Innenbreite', `${p}.innerW`);
       h += chk('Türen', `${p}.doors`);
-      if (sec.doors && sec.type === 'custom') { if (sec.nDoors === undefined) sec.nDoors = 0; h += selF('Anzahl Fronten', `${p}.nDoors`, [[0, `automatisch (${el.doorLayout.length})`], [1, '1'], [2, '2'], [3, '3'], [4, '4']]); }
       if (sec.doors && el.doorLayout.length % 2 === 1 && !(sec.type === 'pax' && sec.size === 100)) h += selF(sec.size === 75 ? '50er Tür' : 'Anschlag', `${p}.hinge`, [['L', 'links'], ['R', 'rechts']]);
-      if (sec.type === 'custom') h += `<div class="addrow"><button class="mini" data-act="grid" data-id="${sec.id}">Außenbreite auf Türraster (${Math.max(500, Math.round((el.u1 - el.u0) / 500) * 500)})</button></div>`;
-      if (sec.doors && sec.type === 'custom') h += `<div class="info">Fronten je ${el.doorLayout.length ? r0(el.doorLayout[0].u1 - el.doorLayout[0].u0) : 0} mm breit – ${el.doorLayout.length && el.doorLayout[0].u1 - el.doorLayout[0].u0 <= S.pax.doorW[50] ? 'aus PAX-Tür 50 besäumbar' : 'Multiplex-Sonderfront'}.</div>`;
+      if (sec.type === 'custom') {
+        if (sec.doors && el.noDoorReason) h += `<div class="note">Keine Tür: ${esc(el.noDoorReason)}. Türen gibt es nur in Originalbreite (50 / 25 cm).</div>`;
+        h += `<div class="addrow"><button class="mini" data-act="grid" data-id="${sec.id}" data-step="500">Breite auf 50er-Raster (${Math.max(500, Math.round((el.u1 - el.u0) / 500) * 500)})</button><button class="mini" data-act="grid" data-id="${sec.id}" data-step="250">auf 25er-Raster (${Math.max(250, Math.round((el.u1 - el.u0) / 250) * 250)})</button></div>`;
+      }
       const inner = el.inner, d = sc.d;
       h += `<div class="kv"><span>Außen</span><b>${r0(el.u1 - el.u0)} × ${el.D}</b><span>Innen B × H</span><b>${r0(inner.u1 - inner.u0)} × ${r0(inner.z1 - inner.z0)}</b><span>Nutzbare Tiefe</span><b>${r0(inner.d1 - inner.d0)}</b><span>Lochreihen</span><b>${S.pax.hole.front} / ${rearRow(S, el.D)}</b></div>`;
       h += `<h3>Inneneinrichtung</h3><div class="presets">${Object.entries(PRESETS).map(([k, v]) => `<button class="mini" data-act="preset" data-id="${sec.id}" data-p="${k}">${v}</button>`).join('')}</div>`;
@@ -286,7 +288,7 @@ document.addEventListener('click', e => {
       const run = S.runs[b.dataset.run];
       const sec = { id: uid(), type: b.dataset.type };
       if (sec.type === 'pax') Object.assign(sec, { size: +b.dataset.size, doors: true, hinge: 'L' });
-      if (sec.type === 'custom') Object.assign(sec, { innerW: 400, doors: true, nDoors: 0, hinge: 'L' });
+      if (sec.type === 'custom') Object.assign(sec, { innerW: 500 - 2 * S.mat.t, doors: true, hinge: 'L' });
       if (sec.type === 'filler') sec.w = 50;
       if (sec.type === 'pax' || sec.type === 'custom') sec.items = presetItems(S, sec, sec.type === 'pax' ? 'shirts' : 'shelves');
       run.sections.push(sec); sel = sec.id; break;
@@ -300,7 +302,7 @@ document.addEventListener('click', e => {
     }
     case 'autofill': autofill(b.dataset.run); break;
     case 'rest': { const key = b.dataset.side === 'left' ? 'blindOpenL' : 'blindOpenR'; S.corners[key] = Math.max(250, (S.corners[key] ?? S.corners.blindOpen) + +b.dataset.free); break; }
-    case 'grid': if (f) { const w = Math.max(500, Math.round(sectionWidth(S, f.sec) / 500) * 500); f.sec.innerW = w - 2 * S.mat.t; f.sec.nDoors = 0; } break;
+    case 'grid': if (f) { const st = +b.dataset.step; const w = Math.max(st, Math.round(sectionWidth(S, f.sec) / st) * st); f.sec.innerW = w - 2 * S.mat.t; } break;
     case 'preset': if (f) f.sec.items = presetItems(S, f.sec, b.dataset.p); break;
     case 'additem': {
       if (!f) return;

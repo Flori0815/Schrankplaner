@@ -7,6 +7,32 @@ export const MAT = {
   crown: ['#dcc08f', '#7d6238'], bedfront: ['#dcc093', '#7d6238'], rost: ['#c49a5c', '#7d5a2a'], mattress: ['#e7ecf2', '#9aa6b4'],
 };
 const f1 = v => Math.round(v);
+
+// Profil-Details einer Front (lokal: a entlang Breite, b entlang Höhe, z nach außen)
+export function profileParts(prof, w, h) {
+  const out = [];
+  if (!prof || prof.type === 'flat') return out;
+  if (prof.type === 'frame') {
+    const fw = Math.min(prof.frameW || 70, w / 4);
+    out.push({ a0: 0, a1: fw, b0: 0, b1: h, z0: 0, z1: 5, kind: 'bar' }, { a0: w - fw, a1: w, b0: 0, b1: h, z0: 0, z1: 5, kind: 'bar' },
+      { a0: fw, a1: w - fw, b0: h - fw, b1: h, z0: 0, z1: 5, kind: 'bar' }, { a0: fw, a1: w - fw, b0: 0, b1: fw, z0: 0, z1: 5, kind: 'bar' });
+  } else if (prof.type === 'grooves') {
+    const n = Math.max(2, Math.round(w / 62));
+    for (let i = 1; i < n; i++) { const a = i * w / n; out.push({ a0: a - 2.5, a1: a + 2.5, b0: 0, b1: h, z0: 0, z1: 0.6, kind: 'groove' }); }
+  } else if (prof.type === 'mirror') {
+    out.push({ a0: 30, a1: w - 30, b0: 30, b1: h - 30, z0: 0, z1: 1, kind: 'glass' });
+  }
+  return out;
+}
+function profileSVG(prof, x0, y0, w, h) {
+  // x0,y0 = linke obere Ecke im SVG, h nach unten
+  return profileParts(prof, w, h).map(p => {
+    const x = x0 + p.a0, y = y0 + (h - p.b1), ww = p.a1 - p.a0, hh = p.b1 - p.b0;
+    if (p.kind === 'bar') return `<rect x="${x}" y="${y}" width="${ww}" height="${hh}" class="pbar"/>`;
+    if (p.kind === 'groove') return `<line x1="${x + ww / 2}" y1="${y}" x2="${x + ww / 2}" y2="${y + hh}" class="pgroove"/>`;
+    return `<rect x="${x}" y="${y}" width="${ww}" height="${hh}" class="pglass"/>`;
+  }).join('');
+}
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
 function proj(s, key, x, y) {
@@ -56,7 +82,7 @@ export function renderFront(s, sc, selId, mode) {
         const hingeU = proj(s, key, dr.hinge[0], dr.hinge[1])[0];
         const hl = Math.abs(hingeU - p.u0) < Math.abs(hingeU - p.u1);
         const xh = hl ? p.u0 : p.u1, xf = hl ? p.u1 : p.u0;
-        g += `<g class="door${dr.elemId === selId ? ' sel' : ''}" data-id="${dr.elemId}"><rect x="${p.u0}" y="${-p.z1}" width="${p.u1 - p.u0}" height="${p.z1 - p.z0}" fill="${dr.color}"/>` +
+        g += `<g class="door${dr.elemId === selId ? ' sel' : ''}" data-id="${dr.elemId}"><rect x="${p.u0}" y="${-p.z1}" width="${p.u1 - p.u0}" height="${p.z1 - p.z0}" fill="${dr.color}"/>` + profileSVG(dr.profile, p.u0, -p.z1, p.u1 - p.u0, p.z1 - p.z0) +
           `<polyline points="${xh},${-p.z1} ${xf},${-(p.z0 + p.z1) / 2} ${xh},${-p.z0}" class="swing"/>` +
           `<text x="${(p.u0 + p.u1) / 2}" y="${-p.z0 - 80}" text-anchor="middle" class="small">${esc(dr.label)}</text></g>`;
         continue;
@@ -70,6 +96,7 @@ export function renderFront(s, sc, selId, mode) {
       }
       const c = b.color ? [b.color, '#777'] : (MAT[b.mat] || MAT.mpx);
       g += `<rect x="${p.u0}" y="${-p.z1}" width="${p.u1 - p.u0}" height="${p.z1 - p.z0}" fill="${c[0]}" stroke="${c[1]}" stroke-width="3" data-id="${b.elemId}"/>`;
+      if (b.profile) g += profileSVG(b.profile, p.u0, -p.z1, p.u1 - p.u0, p.z1 - p.z0);
     }
     for (const bl of sc.blocked) if (bl.view === key) g += `<rect x="${bl.u0}" y="${-d.avail}" width="${bl.u1 - bl.u0}" height="${d.avail}" fill="url(#hatch)" opacity=".55"/><text x="${(bl.u0 + bl.u1) / 2}" y="${-d.avail / 2}" text-anchor="middle" class="small" transform="rotate(-90 ${(bl.u0 + bl.u1) / 2} ${-d.avail / 2})">${bl.label}</text>`;
     // Elemente: Hit-Fläche, Label, Maßkette
