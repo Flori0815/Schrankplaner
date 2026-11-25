@@ -61,7 +61,7 @@ export function defaultState() {
       pivotH: 250,             // Unterkante Bett (ausgeklappt) über Boden
       cabinetH: 2364,
       depthMode: 'min',
-      cladding: 'pax',         // 'pax' = Bettfront aus PAX-Türen (50/25), 'equal' = gleich breite Sonderfronten, 'none'
+      cladding: 'pax',         // 'pax' = Bettfront aus PAX-Türen (50/25), 'none' = ohne
       widthGrid: 250,          // Bettschrankbreite auf dieses Raster aufrunden (0 = minimal)        // 'min' = Zeilentiefe auf Bett-Minimum, 'run' = frei
       matKg: 28, rostKg: 9,
     },

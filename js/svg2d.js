@@ -1,5 +1,5 @@
-import { INTERIOR } from './catalog.js';
-import { RUN_KEYS, RUN_NAMES } from './build.js';
+import { INTERIOR } from './catalog.js?v=6';
+import { RUN_KEYS, RUN_NAMES } from './build.js?v=6';
 
 const NS = 'http://www.w3.org/2000/svg';
 export const MAT = {
