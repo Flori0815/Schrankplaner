@@ -89,3 +89,4 @@ svg .cl { stroke: var(--err); stroke-width: 2; stroke-dasharray: 10 6; }
   header, #side, #insp, #tabs, #toolbar button { display: none; }
   #app { display: block; height: auto; } #view { overflow: visible; }
 }
+h1 .ver { font-weight: 400; color: var(--mut); font-size: 12px; }

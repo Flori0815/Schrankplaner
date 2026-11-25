@@ -1,8 +1,8 @@
-import { defaultState, loadLocal, saveLocal, migrate, uid } from './state.js';
-import { buildScene, derive, normalize, presetItems, PRESETS, RUN_KEYS, RUN_NAMES, runRange, sectionWidth, sectionLabel, holeZs, bedDims, rearRow, bedMinDepth } from './build.js';
-import { cutList, shopList, drillData, toCSV } from './lists.js';
-import { renderFront, renderTop, renderDrill, panZoom } from './svg2d.js';
-import { DOOR_STYLES, INTERIOR, PROFILES } from './catalog.js';
+import { defaultState, loadLocal, saveLocal, migrate, uid } from './state.js?v=6';
+import { buildScene, derive, normalize, presetItems, PRESETS, RUN_KEYS, RUN_NAMES, runRange, sectionWidth, sectionLabel, holeZs, bedDims, rearRow, bedMinDepth } from './build.js?v=6';
+import { cutList, shopList, drillData, toCSV } from './lists.js?v=6';
+import { renderFront, renderTop, renderDrill, panZoom } from './svg2d.js?v=6';
+import { DOOR_STYLES, INTERIOR, PROFILES } from './catalog.js?v=6';
 
 let S = loadLocal() || defaultState();
 normalize(S);
@@ -48,7 +48,7 @@ function renderSide() {
       <div class="info">Verfügbar ${r0(dm.len)} · belegt ${r0(dm.total)} · <b class="${dm.free < 0 ? 'warn' : ''}">Rest ${r0(dm.free)} mm</b></div>
       ${Math.abs(dm.free) > 0.5 ? restButtons(k, dm.free) : ''}`;
     run.sections.forEach((sec, i) => {
-      h += `<div class="sec ${sel === sec.id ? 'sel' : ''}" data-act="select" data-id="${sec.id}"><span>${i + 1}. ${esc(sectionLabel(S, sec))} ${sec.type === 'custom' || sec.type === 'filler' ? `<input class="w" type="number" data-path="runs.${k}.sections.${i}.outer" data-outer="1" value="${r0(sectionWidth(S, sec))}" title="Außenbreite">` : `<small class="info">${r0(sectionWidth(S, sec))}</small>`}</span>
+      h += `<div class="sec ${sel === sec.id ? 'sel' : ''}" data-act="select" data-id="${sec.id}"><span>${i + 1}. ${esc(sectionLabel(S, sec))}${(sc.elements.find(x => x.id === sec.id) || {}).noDoorReason && sec.doors ? ' <small class="warn" title="Breite nicht im Türraster 250/500">ohne Tür</small>' : ''} ${sec.type === 'custom' || sec.type === 'filler' ? `<input class="w" type="number" data-path="runs.${k}.sections.${i}.outer" data-outer="1" value="${r0(sectionWidth(S, sec))}" title="Außenbreite">` : `<small class="info">${r0(sectionWidth(S, sec))}</small>`}</span>
         <button class="mini" data-act="up" data-id="${sec.id}">↑</button><button class="mini" data-act="down" data-id="${sec.id}">↓</button><button class="mini" data-act="del" data-id="${sec.id}">✕</button></div>`;
     });
     h += `<div class="addrow">${[50, 75, 100].map(z => `<button class="mini" data-act="add" data-run="${k}" data-type="pax" data-size="${z}">+${z}</button>`).join('')}
@@ -370,7 +370,7 @@ function downloadCSV(what) {
 }
 
 let View3D = null;
-import('./view3d.js').then(m => { View3D = m.View3D; if (tab === '3d') renderView(); }).catch(err => console.warn('3D nicht verfügbar', err));
+import('./view3d.js?v=6').then(m => { View3D = m.View3D; if (tab === '3d') renderView(); }).catch(err => console.warn('3D nicht verfügbar', err));
 const _rv = renderView;
 // 3D erst rendern, wenn Modul geladen ist
 renderView = function () { if (tab === '3d' && !View3D) { view3d.hidden = false; view.hidden = true; view3d.innerHTML = '<p style="padding:16px">3D wird geladen …</p>'; return; } return _rv(); };

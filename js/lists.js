@@ -1,4 +1,4 @@
-import { HINGES, MISC } from './catalog.js';
+import { HINGES, MISC } from './catalog.js?v=6';
 
 const r = v => Math.round(v);
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { MAT, profileParts } from './svg2d.js';
+import { MAT, profileParts } from './svg2d.js?v=6';
 
 export class View3D {
   constructor(el, onPick) {

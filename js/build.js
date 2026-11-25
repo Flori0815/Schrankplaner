@@ -1,6 +1,6 @@
 // Geometrie: erzeugt aus dem Zustand eine Szene aus achsparallelen Bauteilen (mm).
 // Weltkoordinaten: x entlang Hauptwand (0 = linke Wand), y von Hauptwand in den Raum, z Höhe.
-import { INTERIOR, DOOR_STYLES } from './catalog.js';
+import { INTERIOR, DOOR_STYLES } from './catalog.js?v=6';
 
 export function styleProfile(s) {
   const st = DOOR_STYLES[s.doorStyle] || DOOR_STYLES.forsand_w;
