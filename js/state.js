@@ -44,7 +44,7 @@ export function defaultState() {
       left:  { depth: 580, align: 'end',   autoFiller: true, sections: [] },
       back:  { depth: 580, align: 'start', autoFiller: true, sections: [
         { id: uid(), type: 'pax', size: 100, doors: true, hinge: 'L', preset: 'shirts' },
-        { id: uid(), type: 'custom', innerW: 129, doors: false, preset: 'shelves' },
+        { id: uid(), type: 'custom', innerW: 384, doors: false, nDoors: 0, preset: 'shelves' },
       ] },
       right: { depth: 580, align: 'start', autoFiller: true, sections: [
         { id: uid(), type: 'bed' },
@@ -58,6 +58,7 @@ export function defaultState() {
       mechClear: 25,           // seitlicher Platz für Beschlag
       pivotH: 250,             // Unterkante Bett (ausgeklappt) über Boden
       cabinetH: 2364,
+      depthMode: 'min',        // 'min' = Zeilentiefe auf Bett-Minimum, 'run' = frei
       matKg: 28, rostKg: 9,
     },
     view: { frontMode: 'doors', cutZ: 1000 },

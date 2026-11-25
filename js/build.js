@@ -43,6 +43,13 @@ export function bedDims(s) {
   return { fiW, fiL, foW, foL, innerW, outerW: innerW + 2 * t };
 }
 
+// Mindesttiefe des Bettschranks: eingeklapptes Bett + Rückwand + Luft
+export function bedMinDepth(s) {
+  const b = s.bed;
+  const ytop = b.frontT + b.airGap + b.rostH + b.matH;
+  return Math.ceil((ytop + 12 + s.mat.grooveInset + s.mat.backT + 10) / 5) * 5;
+}
+
 export function sectionWidth(s, sec) {
   const t = s.mat.t;
   switch (sec.type) {
@@ -126,6 +133,7 @@ export function presetItems(s, sec, preset) {
 }
 
 export function normalize(s) {
+  if (s.bed.depthMode === 'min') for (const k of RUN_KEYS) if (s.runs[k].sections.some(x => x.type === 'bed')) s.runs[k].depth = bedMinDepth(s);
   for (const k of RUN_KEYS) for (const sec of s.runs[k].sections) {
     if (sec.type === 'pax' || sec.type === 'custom') {
       if (!sec.items) sec.items = presetItems(s, sec, sec.preset || 'empty');
@@ -312,13 +320,13 @@ export function buildScene(s) {
       if (sec.doors) {
         let ws;
         if (sec.type === 'pax') ws = sec.size === 50 ? [50] : sec.size === 75 ? (sec.hinge === 'R' ? [25, 50] : [50, 25]) : [50, 50];
-        else ws = sec.nDoors === 2 ? ['c', 'c'] : ['c'];
+        else { const nd = +sec.nDoors > 0 ? +sec.nDoors : Math.max(1, Math.round(Wd / 500)); ws = Array(nd).fill('c'); }
         const n = ws.length;
         const real = ws.map(w => w === 'c' ? (Wd - (n + 1) * M.edgeGap) / n : P.doorW[w]);
         const gap = (Wd - real.reduce((a, b) => a + b, 0)) / (n + 1);
         let x = u0 + gap;
         real.forEach((w, j) => {
-          const hinge = n === 1 ? (sec.hinge || 'L') : (j === 0 ? 'L' : 'R');
+          const hinge = (n % 2 === 1 && j === n - 1) ? (sec.hinge || 'L') : (j % 2 === 0 ? 'L' : 'R');
           layout.push({ u0: x, u1: x + w, hinge, nominal: ws[j] === 'c' ? 50 : ws[j] });
           x += w + gap;
         });

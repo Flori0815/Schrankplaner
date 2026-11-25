@@ -37,7 +37,8 @@ input[type=checkbox] { width: auto; }
 .run h4 { margin: 2px 0 6px; display: flex; justify-content: space-between; }
 .sec { display: flex; align-items: center; gap: 4px; padding: 3px 4px; border-radius: 5px; cursor: pointer; }
 .sec:hover { background: var(--bg); } .sec.sel { outline: 2px solid var(--acc); }
-.sec span { flex: 1; }
+.sec span { flex: 1; display: flex; align-items: center; gap: 6px; }
+.sec input.w { width: 72px; padding: 1px 4px; font-size: 12px; }
 .addrow { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .warn { color: var(--warn); font-size: 13px; margin: 4px 0; cursor: pointer; }
 .ok { color: #15803d; }
