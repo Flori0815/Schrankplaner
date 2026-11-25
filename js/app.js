@@ -43,7 +43,9 @@ function renderSide() {
     h += `<div class="run"><h4>${RUN_NAMES[k]} <button class="mini" data-act="autofill" data-run="${k}" title="Mit PAX-Korpussen auffüllen">Auto</button></h4>
       ${run.sections.some(x => x.type === 'bed') && S.bed.depthMode === 'min' ? `<div class="f"><label>Tiefe</label><b>${run.depth} (Bett-Minimum)</b></div>` : num('Tiefe (580 / 350 = PAX)', `runs.${k}.depth`, 5, 'list="depths"')}
       ${selF('Ausrichtung', `runs.${k}.align`, [['start', 'links bündig'], ['center', 'mittig'], ['end', 'rechts bündig']])}
-      <div class="info">Verfügbar ${r0(dm.len)} · belegt ${r0(dm.total)} · <b class="${dm.free < 0 ? 'warn' : ''}">Rest ${r0(dm.free)} mm</b></div>`;
+      ${chk('Rest mit Passblende schließen', `runs.${k}.autoFiller`)}
+      <div class="info">Verfügbar ${r0(dm.len)} · belegt ${r0(dm.total)} · <b class="${dm.free < 0 ? 'warn' : ''}">Rest ${r0(dm.free)} mm</b></div>
+      ${Math.abs(dm.free) > 0.5 ? restButtons(k, dm.free) : ''}`;
     run.sections.forEach((sec, i) => {
       h += `<div class="sec ${sel === sec.id ? 'sel' : ''}" data-act="select" data-id="${sec.id}"><span>${i + 1}. ${esc(sectionLabel(S, sec))} ${sec.type === 'custom' || sec.type === 'filler' ? `<input class="w" type="number" data-path="runs.${k}.sections.${i}.outer" data-outer="1" value="${r0(sectionWidth(S, sec))}" title="Außenbreite">` : `<small class="info">${r0(sectionWidth(S, sec))}</small>`}</span>
         <button class="mini" data-act="up" data-id="${sec.id}">↑</button><button class="mini" data-act="down" data-id="${sec.id}">↓</button><button class="mini" data-act="del" data-id="${sec.id}">✕</button></div>`;
@@ -55,7 +57,7 @@ function renderSide() {
   h += `</details>
   <details><summary>Ecken</summary>
     ${selF('Ecke links', 'corners.left', cornerOpts)}${selF('Ecke rechts', 'corners.right', cornerOpts)}
-    ${num('Öffnung L-Eck', 'corners.open')}${num('Öffnung Blindeck', 'corners.blindOpen')}${num('Eck-Passleiste', 'corners.filler')}${num('Böden im Eckkorpus', 'corners.shelves')}</details>
+    ${num('Öffnung L-Eck', 'corners.open')}${num('Öffnung Blindeck links', 'corners.blindOpenL')}${num('Öffnung Blindeck rechts', 'corners.blindOpenR')}${num('Eck-Passleiste', 'corners.filler')}${num('Böden im Eckkorpus', 'corners.shelves')}</details>
   <details><summary>Klappbett</summary>${bedFields()}</details>
   <details><summary>Material & Konstruktion</summary>
     ${num('Multiplex Korpus', 'mat.t')}${num('Rückwand', 'mat.backT')}${num('Nuttiefe', 'mat.grooveDepth')}${num('Nut ab Hinterkante', 'mat.grooveInset')}
@@ -76,10 +78,22 @@ function renderSide() {
   side.scrollTop = st;
 }
 
+function restButtons(k, free) {
+  const out = [];
+  for (const sd of ['left', 'right']) {
+    const ty = S.corners[sd];
+    if ((k === 'back' && ty === 'blindBack') || (k === sd && ty === 'blindFlank'))
+      out.push(`<button class="mini" data-act="rest" data-side="${sd}" data-free="${free}">Rest → Blindeck ${sd === 'left' ? 'links' : 'rechts'}</button>`);
+  }
+  return out.length ? `<div class="addrow">${out.join('')}</div>` : '';
+}
+
 function bedFields() {
   const el = sc.elements.find(e => e.kind === 'bed');
   const bd = bedDims(S);
-  return `${selF('Tiefe Bettzeile', 'bed.depthMode', [['min', `minimal für Bett (${bedMinDepth(S)} mm)`], ['run', 'frei (Zeilentiefe)']])}${num('Matratze Breite', 'bed.matW')}${num('Matratze Länge', 'bed.matL')}${num('Matratze Höhe', 'bed.matH')}${num('Luft um Matratze', 'bed.clear')}
+  return `${selF('Bettfront', 'bed.cladding', [['pax', 'PAX-Türen (50/25) gekürzt, wie Schrank'], ['equal', 'gleich breite Sonderfronten'], ['none', 'ohne Verkleidung']])}
+    ${selF('Schrankbreite', 'bed.widthGrid', [[250, 'auf 25-cm-Raster (passend zu PAX-Türen)'], [500, 'auf 50-cm-Raster (nur 50er Türen)'], [0, 'minimal']])}
+    ${selF('Tiefe Bettzeile', 'bed.depthMode', [['min', `minimal für Bett (${bedMinDepth(S)} mm)`], ['run', 'frei (Zeilentiefe)']])}${num('Matratze Breite', 'bed.matW')}${num('Matratze Länge', 'bed.matL')}${num('Matratze Höhe', 'bed.matH')}${num('Luft um Matratze', 'bed.clear')}
     ${selF('Lattenrost', 'bed.rost', [['2x80', '2 × 80×200 (mit Mittelauflage)'], ['1x160', '1 × 160×200']])}
     ${num('Lattenrost Höhe', 'bed.rostH')}${num('Luftspalt unter Rost', 'bed.airGap')}
     ${num('Rahmen Multiplex', 'bed.frameT')}${num('Zargenhöhe', 'bed.frameH')}${num('Bodenplatte/Front', 'bed.frontT')}
@@ -87,6 +101,7 @@ function bedFields() {
     ${num('Matratze kg', 'bed.matKg')}${num('Lattenrost kg (je)', 'bed.rostKg')}
     <div class="kv"><span>Rahmen außen</span><b>${r0(bd.foW)} × ${r0(bd.foL)}</b><span>Schrank außen breit</span><b>${r0(bd.outerW)}</b>
     ${el && el.bed ? `<span>Liegehöhe</span><b>${r0(el.bed.lieH)} mm</b><span>Einklapptiefe</span><b>${r0(el.bed.closedDepth)} mm</b><span>Bettgewicht ca.</span><b>${r0(el.bed.kg)} kg</b>
+    <span>Platz Beschlag je Seite</span><b>${r0(el.bed.mech)} mm</b>${el.bedFronts ? `<span>Bettfronten</span><b>${el.bedFronts.map(r0).join(' / ')}</b>` : ''}
     <span>Ausladung</span><b>${r0(el.bed.openReach)} mm</b>${el.bed.passage !== undefined ? `<span>Durchgang offen</span><b>${r0(el.bed.passage)} mm</b>` : ''}` : ''}</div>
     <div class="info">Beschlag (Gasdruckfedern) nach Bettgewicht und Herstellerangaben zu Drehpunkt und Seitenabstand wählen, dann „Platz Beschlag“ und „Drehpunkt“ anpassen.</div>`;
 }
@@ -102,7 +117,7 @@ function renderInspector() {
   if (el.kind === 'cornerL' || el.kind === 'cornerBlind' || el.kind === 'cornerNone') {
     const sd = el.id.endsWith('left') ? 'left' : 'right';
     h += selF('Eckvariante', `corners.${sd}`, [['L', 'L-Eck'], ['blindBack', 'Blindeck – Hauptwand durch'], ['blindFlank', 'Blindeck – Flanke durch'], ['none', 'Stoß']]);
-    h += num('Böden', 'corners.shelves') + num('Öffnung L-Eck', 'corners.open') + num('Öffnung Blindeck', 'corners.blindOpen');
+    h += num('Böden', 'corners.shelves') + num('Öffnung L-Eck', 'corners.open') + num('Öffnung Blindeck', sd === 'left' ? 'corners.blindOpenL' : 'corners.blindOpenR') + `<div class="info">Öffnung ab 1000 mm: 2 Türen. Was nicht durch Türen belegt ist, deckt die Eckblende in Frontfarbe ab.</div>`;
     h += `<div class="info">Eckkorpusse erhalten Eigenbau-Böden auf Bodenträgern. Die Türen sind PAX-Türen 50 cm an den Außenseiten angeschlagen.</div>`;
   } else if (el.kind === 'autofill') {
     h += `<div class="info">Automatische Passblende für den Rest der Zeile. Über „Ausrichtung“ links verschieben oder Korpus ergänzen.</div>`;
@@ -117,6 +132,7 @@ function renderInspector() {
       h += chk('Türen', `${p}.doors`);
       if (sec.doors && sec.type === 'custom') { if (sec.nDoors === undefined) sec.nDoors = 0; h += selF('Anzahl Fronten', `${p}.nDoors`, [[0, `automatisch (${el.doorLayout.length})`], [1, '1'], [2, '2'], [3, '3'], [4, '4']]); }
       if (sec.doors && el.doorLayout.length % 2 === 1 && !(sec.type === 'pax' && sec.size === 100)) h += selF(sec.size === 75 ? '50er Tür' : 'Anschlag', `${p}.hinge`, [['L', 'links'], ['R', 'rechts']]);
+      if (sec.type === 'custom') h += `<div class="addrow"><button class="mini" data-act="grid" data-id="${sec.id}">Außenbreite auf Türraster (${Math.max(500, Math.round((el.u1 - el.u0) / 500) * 500)})</button></div>`;
       if (sec.doors && sec.type === 'custom') h += `<div class="info">Fronten je ${el.doorLayout.length ? r0(el.doorLayout[0].u1 - el.doorLayout[0].u0) : 0} mm breit – ${el.doorLayout.length && el.doorLayout[0].u1 - el.doorLayout[0].u0 <= S.pax.doorW[50] ? 'aus PAX-Tür 50 besäumbar' : 'Multiplex-Sonderfront'}.</div>`;
       const inner = el.inner, d = sc.d;
       h += `<div class="kv"><span>Außen</span><b>${r0(el.u1 - el.u0)} × ${el.D}</b><span>Innen B × H</span><b>${r0(inner.u1 - inner.u0)} × ${r0(inner.z1 - inner.z0)}</b><span>Nutzbare Tiefe</span><b>${r0(inner.d1 - inner.d0)}</b><span>Lochreihen</span><b>${S.pax.hole.front} / ${rearRow(S, el.D)}</b></div>`;
@@ -283,6 +299,8 @@ document.addEventListener('click', e => {
       [arr[f.i], arr[j]] = [arr[j], arr[f.i]]; break;
     }
     case 'autofill': autofill(b.dataset.run); break;
+    case 'rest': { const key = b.dataset.side === 'left' ? 'blindOpenL' : 'blindOpenR'; S.corners[key] = Math.max(250, (S.corners[key] ?? S.corners.blindOpen) + +b.dataset.free); break; }
+    case 'grid': if (f) { const w = Math.max(500, Math.round(sectionWidth(S, f.sec) / 500) * 500); f.sec.innerW = w - 2 * S.mat.t; f.sec.nDoors = 0; } break;
     case 'preset': if (f) f.sec.items = presetItems(S, f.sec, b.dataset.p); break;
     case 'additem': {
       if (!f) return;

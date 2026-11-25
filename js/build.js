@@ -39,15 +39,37 @@ export function bedDims(s) {
   const b = s.bed, t = s.mat.t;
   const fiW = b.matW + 2 * b.clear, fiL = b.matL + 2 * b.clear;
   const foW = fiW + 2 * b.frameT, foL = fiL + 2 * b.frameT;
-  const innerW = foW + 2 * b.mechClear;
-  return { fiW, fiL, foW, foL, innerW, outerW: innerW + 2 * t };
+  const minOuter = foW + 2 * b.mechClear + 2 * t;
+  const grid = +b.widthGrid || 0;
+  const outerW = grid ? Math.ceil(minOuter / grid - 1e-6) * grid : minOuter;
+  return { fiW, fiL, foW, foL, innerW: outerW - 2 * t, outerW, minOuter, mechActual: (outerW - 2 * t - foW) / 2 };
+}
+
+// Frontaufteilung im PAX-Raster: Randfuge e, Fuge zwischen Fronten 2e
+export function frontLayout(s, u0, Wd, mode, n0) {
+  const P = s.pax, e = (500 - P.doorW[50]) / 2;
+  let ws;
+  if (mode === 'pax') {
+    const n50 = Math.max(0, Math.floor((Wd + 1) / 500));
+    ws = Array(n50).fill(P.doorW[50]);
+    if (Wd - n50 * 500 >= 249) ws.push(P.doorW[25]);
+    if (!ws.length) ws = [Wd - 2 * e];
+  } else {
+    const n = n0 > 0 ? n0 : Math.max(1, Math.round(Wd / 500));
+    ws = Array(n).fill((Wd - 2 * e - (n - 1) * 2 * e) / n);
+  }
+  const n = ws.length, sum = ws.reduce((a, b) => a + b, 0);
+  const gap = n > 1 ? (Wd - 2 * e - sum) / (n - 1) : 0;
+  const out = []; let x = u0 + (n > 1 ? e : (Wd - ws[0]) / 2);
+  for (const w of ws) { out.push({ u0: x, u1: x + w, w }); x += w + gap; }
+  return { fronts: out, gap, e };
 }
 
 // Mindesttiefe des Bettschranks: eingeklapptes Bett + Rückwand + Luft
 export function bedMinDepth(s) {
   const b = s.bed;
-  const ytop = b.frontT + b.airGap + b.rostH + b.matH;
-  return Math.ceil((ytop + 12 + s.mat.grooveInset + s.mat.backT + 10) / 5) * 5;
+  const inside = b.frontT + b.airGap + b.rostH + b.matH;
+  return Math.ceil((inside + s.mat.grooveInset + s.mat.backT + 10) / 5) * 5;
 }
 
 export function sectionWidth(s, sec) {
@@ -85,11 +107,13 @@ export function cornerExt(s, side) {
   const Db = s.runs.back.depth, Df = s.runs[side].depth;
   switch (type) {
     case 'L': return { back: Df + C.open, flank: Db + C.open };
-    case 'blindBack': return { back: Df + C.filler + C.blindOpen, flank: Db + C.filler };
-    case 'blindFlank': return { back: Df + C.filler, flank: Db + C.filler + C.blindOpen };
+    case 'blindBack': return { back: Df + C.filler + blindOpen(s, side), flank: Db + C.filler };
+    case 'blindFlank': return { back: Df + C.filler, flank: Db + C.filler + blindOpen(s, side) };
     default: return { back: 0, flank: Db + C.filler };
   }
 }
+
+export const blindOpen = (s, side) => +(s.corners[side === 'left' ? 'blindOpenL' : 'blindOpenR'] ?? s.corners.blindOpen);
 
 export function runRange(s, key) {
   const W = s.room.back;
@@ -277,7 +301,7 @@ export function buildScene(s) {
       }
     } else {
       const a = toW(fr, u0, D), b = toW(fr, u0 + Wd, D + M.crownT);
-      add([Math.min(a[0], b[0]), Math.min(a[1], b[1]), zTop], [Math.max(a[0], b[0]), Math.max(a[1], b[1]), d.avail], { views: [view || fr.key], mat: 'crown', elemId, cut: cut('Zierleiste (je Wand durchgehend fertigen)', M.crownT) });
+      add([Math.min(a[0], b[0]), Math.min(a[1], b[1]), zTop], [Math.max(a[0], b[0]), Math.max(a[1], b[1]), d.avail], { views: [view || fr.key], mat: 'crown', color: style.color, elemId, cut: cut('Zierleiste (je Wand durchgehend fertigen)', M.crownT) });
     }
   }
 
@@ -297,10 +321,10 @@ export function buildScene(s) {
     if (free > 0) {
       if (run.align === 'start') endFill = free; else if (run.align === 'end') startFill = free; else { startFill = free / 2; endFill = free / 2; }
     }
-    if (free > 250 && run.autoFiller) warn(`${RUN_NAMES[key]}: Rest ${Math.round(free)} mm – Korpus ergänzen?`);
+    if (free > 250) warn(`${RUN_NAMES[key]}: Rest ${Math.round(free)} mm – Korpus ergänzen?`);
     const fillers = [];
     let u = ua;
-    if (startFill > 0.5) { fillers.push([u, u + startFill]); u += startFill; }
+    if (startFill > 0.5) { if (run.autoFiller) fillers.push([u, u + startFill]); u += startFill; }
     run.sections.forEach((sec, i) => {
       const Wd = widths[i], u0 = u; u += Wd;
       const id = sec.id;
@@ -321,16 +345,17 @@ export function buildScene(s) {
         let ws;
         if (sec.type === 'pax') ws = sec.size === 50 ? [50] : sec.size === 75 ? (sec.hinge === 'R' ? [25, 50] : [50, 25]) : [50, 50];
         else { const nd = +sec.nDoors > 0 ? +sec.nDoors : Math.max(1, Math.round(Wd / 500)); ws = Array(nd).fill('c'); }
-        const n = ws.length;
-        const real = ws.map(w => w === 'c' ? (Wd - (n + 1) * M.edgeGap) / n : P.doorW[w]);
-        const gap = (Wd - real.reduce((a, b) => a + b, 0)) / (n + 1);
-        let x = u0 + gap;
+        const n = ws.length, e = (500 - P.doorW[50]) / 2;
+        const real = ws.map(w => w === 'c' ? (Wd - 2 * e - (n - 1) * 2 * e) / n : P.doorW[w]);
+        const gap = n > 1 ? (Wd - 2 * e - real.reduce((a, b) => a + b, 0)) / (n - 1) : 0;
+        let x = u0 + (n > 1 ? e : (Wd - real[0]) / 2);
+        if (sec.type === 'custom' && Math.abs(real[0] - P.doorW[50]) > 3) warn(`${label}: Front ${Math.round(real[0])} mm breit – weicht vom Türraster (${P.doorW[50]}) ab. Außenbreite auf ein Vielfaches von 500 setzen.`, id);
         real.forEach((w, j) => {
           const hinge = (n % 2 === 1 && j === n - 1) ? (sec.hinge || 'L') : (j % 2 === 0 ? 'L' : 'R');
           layout.push({ u0: x, u1: x + w, hinge, nominal: ws[j] === 'c' ? 50 : ws[j] });
           x += w + gap;
         });
-        if (gap < 1) warn(`${label}: Türen zu breit für Korpus (Fuge ${gap.toFixed(1)} mm)`, id);
+        if ((n > 1 && gap < 1) || real[0] > Wd - 2) warn(`${label}: Türen zu breit für Korpus`, id);
         for (const dl of layout) {
           const custom = sec.type !== 'pax';
           door(fr, id, dl.u0, dl.u1, d.doorBot, d.doorH, D, dl.hinge, { kind: custom ? 'custom' : 'pax', color: style.color, label: custom ? `Sonderfront ${Math.round(dl.u1 - dl.u0)}` : `${style.name} ${dl.nominal}×${d.sizeKey}` });
@@ -347,13 +372,13 @@ export function buildScene(s) {
       el.holes = true;
       topPart(fr, u0, Wd, D, d.Htot, id, label, sec.doors ? layout : null);
     });
-    if (endFill > 0.5) fillers.push([u, u + endFill]);
+    if (endFill > 0.5 && run.autoFiller) fillers.push([u, u + endFill]);
     // Passblenden
     for (const f of fillers) {
       const [f0, f1, fid] = f;
       const id = fid || `fill_${key}_${Math.round(f0)}`;
       if (!fid) sc.elements.push({ id, kind: 'autofill', label: `Passblende ${Math.round(f1 - f0)}`, view: key, u0: f0, u1: f1, run: key, D });
-      boxR(fr, f0 + 0.5, f1 - 0.5, 0, d.Htot - P.doorTopReveal, D, D + M.t, { mat: 'filler', elemId: id, cut: cut('Passblende', t) });
+      boxR(fr, f0 + 0.5, f1 - 0.5, 0, d.Htot - P.doorTopReveal, D, D + M.t, { mat: 'filler', color: style.color, elemId: id, cut: cut('Passblende', t) });
       if (f1 - f0 > 60) boxR(fr, f0 + 0.5, f1 - 0.5, 0, d.Htot, D - 80, D, { mat: 'frame', elemId: id, cut: cut('Passblende Unterkonstruktion', t) });
       topPart(fr, f0, f1 - f0, D, d.Htot, id, 'Passblende', null);
     }
@@ -366,50 +391,73 @@ export function buildScene(s) {
     frameUnder(fr, u0, Wd, D, id, [fr.key]);
     const inner = carcass(fr, u0, Wd, D, d.plinth, H, id, 'Bettschrank');
     el.inner = inner;
-    const uc = u0 + Wd / 2, hp = b.pivotH, dp = D - 6;
-    const yr = b.frontT + b.airGap;          // UK Lattenrost
-    const ytop = yr + b.rostH + b.matH;      // OK Matratze
+    const clad = b.cladding !== 'none';
+    const off = clad ? M.doorT : 0;          // Verkleidung vor der Bodenplatte
+    const uc = u0 + Wd / 2, hp = b.pivotH, dp = D + off;
+    const y0 = off;                           // Rückseite Verkleidung = Außenseite Bodenplatte
+    const yr = y0 + b.frontT + b.airGap;      // UK Lattenrost
+    const ytop = yr + b.rostH + b.matH;       // OK Matratze
     const parts = [];
     const P_ = (X0, X1, Y0, Y1, Z0, Z1, mat, cutName, T, extra = {}) => parts.push({ X0, X1, Y0, Y1, Z0, Z1, mat, cut: cutName ? cut(cutName, T) : null, ...extra });
-    const hw = bd.foW / 2, ft = b.frameT;
-    P_(-hw, hw, 0, b.frontT, 0, bd.foL, 'bedfront', 'Klappbett: Bodenplatte/Front', b.frontT);
-    P_(-hw, -hw + ft, b.frontT, b.frontT + b.frameH, 0, bd.foL, 'mpx', 'Klappbett: Seitenzarge', ft);
-    P_(hw - ft, hw, b.frontT, b.frontT + b.frameH, 0, bd.foL, 'mpx', 'Klappbett: Seitenzarge', ft);
-    P_(-hw + ft, hw - ft, b.frontT, b.frontT + b.frameH, 0, ft, 'mpx', 'Klappbett: Kopfzarge', ft);
-    P_(-hw + ft, hw - ft, b.frontT, b.frontT + b.frameH, bd.foL - ft, bd.foL, 'mpx', 'Klappbett: Fußzarge', ft);
-    P_(-hw + ft, -hw + ft + 24, b.frontT, yr, ft, bd.foL - ft, 'frame', null);
-    P_(hw - ft - 24, hw - ft, b.frontT, yr, ft, bd.foL - ft, 'frame', null);
+    const hw = bd.foW / 2, ft = b.frameT, zt = y0 + b.frontT;
+    P_(-hw, hw, y0, zt, 0, bd.foL, 'bedfront', 'Klappbett: Bodenplatte', b.frontT);
+    P_(-hw, -hw + ft, zt, zt + b.frameH, 0, bd.foL, 'mpx', 'Klappbett: Seitenzarge', ft);
+    P_(hw - ft, hw, zt, zt + b.frameH, 0, bd.foL, 'mpx', 'Klappbett: Seitenzarge', ft);
+    P_(-hw + ft, hw - ft, zt, zt + b.frameH, 0, ft, 'mpx', 'Klappbett: Kopfzarge', ft);
+    P_(-hw + ft, hw - ft, zt, zt + b.frameH, bd.foL - ft, bd.foL, 'mpx', 'Klappbett: Fußzarge', ft);
+    P_(-hw + ft, -hw + ft + 24, zt, yr, ft, bd.foL - ft, 'frame', null);
+    P_(hw - ft - 24, hw - ft, zt, yr, ft, bd.foL - ft, 'frame', null);
     const iw = bd.fiW, x0 = -iw / 2;
     if (b.rost === '2x80') {
-      P_(-20, 20, b.frontT, yr, ft, bd.foL - ft, 'frame', null);
+      P_(-20, 20, zt, yr, ft, bd.foL - ft, 'frame', null);
       P_(x0 + 2, -2, yr, yr + b.rostH, ft + 2, bd.foL - ft - 2, 'rost', null);
       P_(2, -x0 - 2, yr, yr + b.rostH, ft + 2, bd.foL - ft - 2, 'rost', null);
     } else P_(x0 + 2, -x0 - 2, yr, yr + b.rostH, ft + 2, bd.foL - ft - 2, 'rost', null);
     P_(x0 + b.clear, -x0 - b.clear, yr + b.rostH, ytop, ft + b.clear, bd.foL - ft - b.clear, 'mattress', null);
+    // Frontverkleidung im Türraster (am Bett befestigt) + feste Sockelblende darunter
+    let cladVol = 0;
+    if (clad) {
+      const lay = frontLayout(s, u0, Wd, b.cladding === 'equal' ? 'equal' : 'pax', 0);
+      const zc0 = M.edgeGap, zc1 = d.doorTop - hp;
+      for (const f of lay.fronts) {
+        P_(f.u0 - uc, f.u1 - uc, 0, off, zc0, zc1, 'clad', null, 0, { color: style.color });
+        cladVol += f.w * off * (zc1 - zc0) / 1e9;
+        const nom = Math.abs(f.w - P.doorW[25]) < 2 ? 25 : 50;
+        const pax = b.cladding !== 'equal' && Math.abs(f.w - P.doorW[nom]) < 2;
+        sc.buy.push({ group: 'Klappbett', name: pax ? `Bettfront: ${style.name} Tür ${nom}×229 auf ${Math.round(zc1 - zc0)} mm kürzen (Abschnitt für Sockelblende nutzen)` : `Bettfront Sonderfront ${Math.round(f.w)}×${Math.round(zc1 - zc0)}`, art: pax ? (style.art[`${nom}x229`] || '–') : '', qty: 1 });
+      }
+      const lb1 = hp - M.edgeGap;
+      if (lb1 - d.doorBot > 20) {
+        const f0 = lay.fronts[0].u0, f1 = lay.fronts[lay.fronts.length - 1].u1;
+        boxR(fr, f0, f1, d.doorBot, lb1, D, D + M.doorT, { mat: 'filler', color: style.color, elemId: id, cut: cut('Bettschrank: Sockelblende unter Bettfront (fest)', M.doorT) });
+      } else warn('Klappbett: Drehpunkt zu niedrig für Sockelblende unter der Bettfront', id);
+      el.bedFronts = lay.fronts.map(f => f.w);
+    }
     // Fuß (nur offen sichtbar)
     const legs = [[-hw + 40, -hw + 80], [hw - 80, hw - 40]];
     sc.beds.push({ id, run: fr.key, frame: fr, uc, hp, dp, parts, legs, foL: bd.foL, label: el.label });
     // Geschlossene Lage als Boxen (2D, Zuschnitt)
     for (const p of parts) {
-      boxR(fr, uc + p.X0, uc + p.X1, hp + p.Z0, hp + p.Z1, dp - p.Y1, dp - p.Y0, { mat: p.mat, elemId: id, cut: p.cut, bedPart: true });
+      boxR(fr, uc + p.X0, uc + p.X1, hp + p.Z0, hp + p.Z1, dp - p.Y1, dp - p.Y0, { mat: p.mat, color: p.color, elemId: id, cut: p.cut, bedPart: true });
     }
-    // Leisten für Lattenrost
-    sc.buy.push({ group: 'Holz', name: `Auflageleiste 24×${Math.round(yr - b.frontT)} mm, Länge ${Math.round(bd.foL - 2 * ft)} mm`, art: '', qty: b.rost === '2x80' ? 3 : 2 });
+    sc.buy.push({ group: 'Holz', name: `Auflageleiste 24×${Math.round(yr - zt)} mm, Länge ${Math.round(bd.foL - 2 * ft)} mm`, art: '', qty: b.rost === '2x80' ? 3 : 2 });
     // Prüfungen
-    const closedDepth = ytop + 6;
-    const freeD = dp - inner.d0;
-    if (closedDepth > freeD) warn(`Klappbett: eingeklappt ${Math.round(closedDepth)} mm tief, nur ${Math.round(freeD)} mm frei`, id);
+    const closedDepth = ytop - off;
+    const freeD = D - inner.d0;
+    if (closedDepth + 10 > freeD) warn(`Klappbett: eingeklappt ${Math.round(closedDepth)} mm tief, nur ${Math.round(freeD)} mm frei`, id);
     if (hp + bd.foL + 10 > inner.z1) warn(`Klappbett: Bett ${Math.round(hp + bd.foL)} mm hoch, Schrank innen nur bis ${Math.round(inner.z1)} mm`, id);
     if (hp < inner.z0 + 10) warn('Klappbett: Drehpunkt liegt unter dem Schrankboden', id);
+    if (bd.mechActual < b.mechClear - 0.5) warn('Klappbett: zu wenig seitlicher Platz für den Beschlag', id);
     // Gewicht
     const vol = parts.filter(p => p.cut).reduce((a, p) => a + (p.X1 - p.X0) * (p.Y1 - p.Y0) * (p.Z1 - p.Z0), 0) / 1e9;
     const nR = b.rost === '2x80' ? 2 : 1;
-    const kg = vol * M.density + b.matKg + nR * b.rostKg;
-    el.bed = { kg, lieH: hp + ytop, closedDepth, openReach: dp + bd.foL, height: hp + bd.foL, foW: bd.foW, foL: bd.foL };
+    const kg = vol * M.density + cladVol * 650 + b.matKg + nR * b.rostKg;
+    el.bed = { kg, lieH: hp + ytop, closedDepth, openReach: dp + bd.foL, height: hp + bd.foL, foW: bd.foW, foL: bd.foL, mech: bd.mechActual };
     sc.buy.push({ group: 'Klappbett', name: `Klappbett-Beschlag vertikal (Gasdruckfedern), Bettgewicht ca. ${Math.round(kg)} kg, Breite ${b.matW / 10} cm`, art: '', qty: 1 });
+    if (bd.mechActual > b.mechClear + 5) sc.buy.push({ group: 'Holz', name: `Distanzleiste für Beschlag, ${Math.round(bd.mechActual - b.mechClear)} mm stark (je Seite)`, art: '', qty: 2 });
     sc.buy.push({ group: 'Klappbett', name: b.rost === '2x80' ? `Lattenrost 80×${b.matL / 10} (H ≤ ${b.rostH} mm)` : `Lattenrost ${b.matW / 10}×${b.matL / 10} (H ≤ ${b.rostH} mm)`, art: '', qty: nR });
     sc.buy.push({ group: 'Klappbett', name: `Matratze ${b.matW / 10}×${b.matL / 10}, max. ${b.matH / 10} cm hoch`, art: '', qty: 1 });
-    sc.buy.push({ group: 'Klappbett', name: 'Klappfuß für Schrankbett (Paar)', art: '', qty: 1 });
+    sc.buy.push({ group: 'Klappbett', name: `Klappfuß für Schrankbett (Paar), Höhe ca. ${hp} mm`, art: '', qty: 1 });
     sc.buy.push({ group: 'Klappbett', name: 'Matratzenhaltegurte (Paar)', art: '', qty: 1 });
     topPart(fr, u0, Wd, D, b.cabinetH, id, 'Bettschrank', null);
   }
@@ -454,7 +502,7 @@ export function buildScene(s) {
         sc.buy.push({ group: 'Beschläge', name: 'Bodenträger Ø5 mm', art: '', qty: 6 });
       }
       // Türen
-      const dw = P.doorW[50], e = (C.open - dw) / 2;
+      const dw = P.doorW[50], e = (500 - dw) / 2;
       const mk = (hingeP, sDir, nDir, view, minP, maxP) => {
         sc.doors.push({ elemId: id, view, hinge: hingeP, s: sDir, n: nDir, w: dw, h: d.doorH, z0: d.doorBot, t: M.doorT, kind: 'pax', color: style.color, label: `${style.name} 50×${d.sizeKey}`, min: minP, max: maxP });
         sc.buy.push({ group: 'Fronten', name: `${style.name} Tür 50×${d.sizeKey} cm`, art: style.art[`50x${d.sizeKey}`] || '–', qty: 1 });
@@ -474,8 +522,8 @@ export function buildScene(s) {
       drillSide(id, `${nm} Seite Flanke`, side === 'left' ? 'L' : 'R', Df, d.plinth, H, hz, false);
       // Oberer Abschluss
       if (d.topMode === 'crown') {
-        addPQ(Df, a, Db, Db + M.crownT, d.Htot, d.avail, ['back'], { mat: 'crown', cut: cut('Zierleiste (je Wand durchgehend fertigen)', M.crownT) });
-        addPQ(Df, Df + M.crownT, Db + M.crownT, b, d.Htot, d.avail, [fk], { mat: 'crown', cut: cut('Zierleiste (je Wand durchgehend fertigen)', M.crownT) });
+        addPQ(Df, a, Db, Db + M.crownT, d.Htot, d.avail, ['back'], { mat: 'crown', color: style.color, cut: cut('Zierleiste (je Wand durchgehend fertigen)', M.crownT) });
+        addPQ(Df, Df + M.crownT, Db + M.crownT, b, d.Htot, d.avail, [fk], { mat: 'crown', color: style.color, cut: cut('Zierleiste (je Wand durchgehend fertigen)', M.crownT) });
       } else if (d.topMode === 'box') {
         const Ht = d.Ht;
         addPQ(a - t, a, 0, Db, d.Htot, d.avail, ['back'], mpx('Aufsatz Seite'));
@@ -498,14 +546,15 @@ export function buildScene(s) {
       // Passleiste am anderen Lauf
       {
         const ua = cornerU(s, otherRun, side, Dpass + M.doorT), ub = cornerU(s, otherRun, side, Dpass + C.filler);
-        boxR(frO, Math.min(ua, ub), Math.max(ua, ub), 0, d.Htot - P.doorTopReveal, Dother, Dother + t, { mat: 'filler', elemId: id, cut: cut('Eck-Passleiste', t) });
-        if (d.topMode === 'crown') boxR(frO, Math.min(ua, ub), Math.max(ua, ub), d.Htot, d.avail, Dother, Dother + M.crownT, { mat: 'crown', elemId: id, cut: cut('Zierleiste (je Wand durchgehend fertigen)', M.crownT) });
+        boxR(frO, Math.min(ua, ub), Math.max(ua, ub), 0, d.Htot - P.doorTopReveal, Dother, Dother + t, { mat: 'filler', color: style.color, elemId: id, cut: cut('Eck-Passleiste', t) });
+        if (d.topMode === 'crown') boxR(frO, Math.min(ua, ub), Math.max(ua, ub), d.Htot, d.avail, Dother, Dother + M.crownT, { mat: 'crown', color: style.color, elemId: id, cut: cut('Zierleiste (je Wand durchgehend fertigen)', M.crownT) });
       }
       const blk0 = cornerU(s, passRun, side, 0), blk1 = cornerU(s, passRun, side, Dother + C.filler);
       sc.blocked.push({ view: passRun, u0: Math.min(blk0, blk1), u1: Math.max(blk0, blk1), label: 'verdeckt' });
       { const o0 = cornerU(s, otherRun, side, 0), o1 = cornerU(s, otherRun, side, Dpass); sc.blocked.push({ view: otherRun, u0: Math.min(o0, o1), u1: Math.max(o0, o1), label: 'Eckbereich' }); }
       if (type === 'none') { sc.elements.push({ id, kind: 'cornerNone', label: `${nm} (Stoß)`, view: otherRun, u0: Math.min(cornerU(s, otherRun, side, 0), cornerU(s, otherRun, side, Dpass + C.filler)), u1: Math.max(cornerU(s, otherRun, side, 0), cornerU(s, otherRun, side, Dpass + C.filler)), run: otherRun, D: Dother }); continue; }
-      const Wb = Dother + C.filler + C.blindOpen;
+      const bOpen = blindOpen(s, side);
+      const Wb = Dother + C.filler + bOpen;
       const c0 = cornerU(s, passRun, side, 0), c1 = cornerU(s, passRun, side, Wb);
       const u0 = Math.min(c0, c1);
       const outerIsU1 = c1 > c0;    // äußeres Ende (weg von Ecke)
@@ -518,21 +567,28 @@ export function buildScene(s) {
         boxR(frP, inner.u0 + 1, inner.u1 - 1, zz, zz + t, inner.d0 + 2, Dpass - 10, { mat: 'mpx', elemId: id, cut: cut(`${nm}: Einlegeboden`, t) });
         sc.buy.push({ group: 'Beschläge', name: 'Bodenträger Ø5 mm', art: '', qty: 4 });
       }
-      const dw = P.doorW[50], e = (C.blindOpen - dw) / 2;
-      const du0 = outerIsU1 ? u0 + Wb - e - dw : u0 + e, du1 = du0 + dw;
-      const hinge = outerIsU1 ? 'R' : 'L';
-      door(frP, id, du0, du1, d.doorBot, d.doorH, Dpass, hinge, { kind: 'pax', color: style.color, label: `${style.name} 50×${d.sizeKey}` });
-      sc.buy.push({ group: 'Fronten', name: `${style.name} Tür 50×${d.sizeKey} cm`, art: style.art[`50x${d.sizeKey}`] || '–', qty: 1 });
-      sc.buy.push({ group: 'Scharniere', name: 'hinge', art: 'hinge-main', qty: 1, hinge: true, main: true });
-      const bl0 = outerIsU1 ? u0 + 1 : du1 + M.edgeGap, bl1 = outerIsU1 ? du0 - M.edgeGap : u0 + Wb - 1;
-      boxR(frP, bl0, bl1, d.doorBot, d.doorTop, Dpass, Dpass + M.doorT, { mat: 'filler', elemId: id, cut: cut(`${nm}: Eckblende`, t) });
+      const dw = P.doorW[50], e = (500 - dw) / 2;
+      const nb = Math.max(1, Math.floor((bOpen + 1) / 500));
+      const bl = [];
+      for (let k = 0; k < nb; k++) {
+        const du0 = outerIsU1 ? u0 + Wb - e - dw - k * 500 : u0 + e + k * 500;
+        const hinge = nb === 1 ? (outerIsU1 ? 'R' : 'L') : ((k % 2 === 0) === outerIsU1 ? 'R' : 'L');
+        bl.push({ u0: du0, u1: du0 + dw, hinge, nominal: 50 });
+        door(frP, id, du0, du0 + dw, d.doorBot, d.doorH, Dpass, hinge, { kind: 'pax', color: style.color, label: `${style.name} 50×${d.sizeKey}` });
+        sc.buy.push({ group: 'Fronten', name: `${style.name} Tür 50×${d.sizeKey} cm`, art: style.art[`50x${d.sizeKey}`] || '–', qty: 1 });
+        sc.buy.push({ group: 'Scharniere', name: 'hinge', art: 'hinge-main', qty: 1, hinge: true, main: true });
+      }
+      const inn = bl.reduce((a, x) => Math.min(a, x.u0), Infinity), out = bl.reduce((a, x) => Math.max(a, x.u1), -Infinity);
+      const bl0 = outerIsU1 ? u0 + 1 : out + 2 * e, bl1 = outerIsU1 ? inn - 2 * e : u0 + Wb - 1;
+      boxR(frP, bl0, bl1, d.doorBot, d.doorTop, Dpass, Dpass + M.doorT, { mat: 'filler', color: style.color, elemId: id, cut: cut(`${nm}: Eckblende`, t) });
       const lbl = `${nm} (Blindeck)`;
       sc.elements.push({ id, kind: 'cornerBlind', label: lbl, view: passRun, u0, u1: u0 + Wb, run: passRun, D: Dpass, inner });
       const hz = hingeZs(d.doorTop, d.doorH);
-      drillSide(id, lbl, 'L', Dpass, d.plinth, H, hinge === 'L' ? hz : [], true);
-      drillSide(id, lbl, 'R', Dpass, d.plinth, H, hinge === 'R' ? hz : [], true);
-      topPart(frP, u0, Wb, Dpass, d.Htot, id, lbl, [{ u0: du0, u1: du1, hinge, nominal: 50 }]);
-      if (d.topMode === 'box') boxR(frP, bl0, bl1, d.Htot - P.doorTopReveal + M.edgeGap, d.avail - P.doorTopReveal, Dpass, Dpass + M.doorT, { mat: 'filler', elemId: id, cut: cut(`${nm}: Eckblende Aufsatz`, t) });
+      drillSide(id, lbl, 'L', Dpass, d.plinth, H, bl.some(x => x.hinge === 'L') ? hz : [], true);
+      drillSide(id, lbl, 'R', Dpass, d.plinth, H, bl.some(x => x.hinge === 'R') ? hz : [], true);
+      if (nb > 1) warn(`${nm}: ${nb} Türen im Blindeck – innere Scharniere brauchen eine Mittelwand oder Pfosten`, id);
+      topPart(frP, u0, Wb, Dpass, d.Htot, id, lbl, bl);
+      if (d.topMode === 'box') boxR(frP, bl0, bl1, d.Htot - P.doorTopReveal + M.edgeGap, d.avail - P.doorTopReveal, Dpass, Dpass + M.doorT, { mat: 'filler', color: style.color, elemId: id, cut: cut(`${nm}: Eckblende Aufsatz`, t) });
     }
   }
 

@@ -82,7 +82,7 @@ export class View3D {
     for (const b of sc.boxes) {
       if (b.bedPart) continue;
       const sx = b.max[0] - b.min[0], sy = b.max[2] - b.min[2], sz = b.max[1] - b.min[1];
-      const color = b.mat === 'item' ? (b.color || '#eee') : (MAT[b.mat] || MAT.mpx)[0];
+      const color = b.color || (MAT[b.mat] || MAT.mpx)[0];
       const m = this.boxMesh(sx, sy, sz, color, b.elemId, b.mat !== 'item');
       m.position.set(b.min[0] + sx / 2, b.min[2] + sy / 2, b.min[1] + sz / 2);
       this.root.add(m);
@@ -110,7 +110,7 @@ export class View3D {
       grp.matrixAutoUpdate = false; grp.matrix.copy(mtx);
       const piv = new THREE.Group(); piv.position.set(bed.uc, bed.hp, bed.dp);
       for (const p of bed.parts) {
-        const color = (MAT[p.mat] || MAT.mpx)[0];
+        const color = p.color || (MAT[p.mat] || MAT.mpx)[0];
         const m = this.boxMesh(p.X1 - p.X0, p.Y1 - p.Y0, p.Z1 - p.Z0, color, bed.id);
         m.position.set((p.X0 + p.X1) / 2, (p.Y0 + p.Y1) / 2, (p.Z0 + p.Z1) / 2);
         piv.add(m);

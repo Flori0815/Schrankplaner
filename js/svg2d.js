@@ -68,7 +68,7 @@ export function renderFront(s, sc, selId, mode) {
         if (cat && cat.hang && mode !== 'doors') { const hh = Math.min(cat.hang, p.z0 - d.intZ0); if (hh > 0) g += `<rect x="${p.u0 + 20}" y="${-p.z0}" width="${p.u1 - p.u0 - 40}" height="${hh}" class="hang"/>`; }
         continue;
       }
-      const c = MAT[b.mat] || MAT.mpx;
+      const c = b.color ? [b.color, '#777'] : (MAT[b.mat] || MAT.mpx);
       g += `<rect x="${p.u0}" y="${-p.z1}" width="${p.u1 - p.u0}" height="${p.z1 - p.z0}" fill="${c[0]}" stroke="${c[1]}" stroke-width="3" data-id="${b.elemId}"/>`;
     }
     for (const bl of sc.blocked) if (bl.view === key) g += `<rect x="${bl.u0}" y="${-d.avail}" width="${bl.u1 - bl.u0}" height="${d.avail}" fill="url(#hatch)" opacity=".55"/><text x="${(bl.u0 + bl.u1) / 2}" y="${-d.avail / 2}" text-anchor="middle" class="small" transform="rotate(-90 ${(bl.u0 + bl.u1) / 2} ${-d.avail / 2})">${bl.label}</text>`;
@@ -106,7 +106,7 @@ export function renderTop(s, sc, selId, cutZ) {
   // Elemente Grundfläche
   const boxes = sc.boxes.filter(b => b.min[2] <= cutZ && b.max[2] >= cutZ);
   for (const b of boxes) {
-    const c = b.mat === 'item' ? [b.color || '#eee', '#777'] : (MAT[b.mat] || MAT.mpx);
+    const c = b.color ? [b.color, '#777'] : (MAT[b.mat] || MAT.mpx);
     g += `<rect x="${b.min[0]}" y="${b.min[1]}" width="${b.max[0] - b.min[0]}" height="${b.max[1] - b.min[1]}" fill="${c[0]}" stroke="${c[1]}" stroke-width="3" data-id="${b.elemId}"/>`;
   }
   // Türen + Schwenkbereich
