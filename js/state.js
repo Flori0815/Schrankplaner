@@ -4,7 +4,7 @@ export const uid = (p = 's') => `${p}${Date.now().toString(36)}${(idc++).toStrin
 
 export function defaultState() {
   return {
-    version: 2,
+    version: 3,
     room: { height: 2450, ceilingGap: 10, left: 1200, back: 3400, right: 2400 },
     concept: '229',            // '229' = PAX 236 + Zierleiste, '195' = PAX 201 + Aufsatzkorpus
     topBoxMin: 150,            // ab dieser Resthöhe wird ein Aufsatzkorpus gebaut, sonst Blende
@@ -36,12 +36,13 @@ export function defaultState() {
     corners: {
       left: 'L', right: 'blindBack',   // 'L' | 'blindBack' | 'blindFlank' | 'none'
       open: 525,               // Öffnung L-Eck (wie PAX Eckanbauelement 52,5)
-      blindOpen: 500,          // Öffnung Blindeck-Korpus (1 PAX-Tür 50)
+      blindOpen: 500,          // Öffnung Blindeck-Korpus (Altwert)
+      blindOpenL: 500, blindOpenR: 500,  // Öffnung Blindeck je Seite (500 = 1 PAX-Tür)
       filler: 50,              // Passleiste Ecke
       shelves: 4,              // Böden im Eckkorpus
     },
     runs: {
-      left:  { depth: 580, align: 'end',   autoFiller: true, sections: [] },
+      left:  { depth: 580, align: 'end',   autoFiller: false, sections: [] },
       back:  { depth: 580, align: 'start', autoFiller: true, sections: [
         { id: uid(), type: 'pax', size: 100, doors: true, hinge: 'L', preset: 'shirts' },
         { id: uid(), type: 'custom', innerW: 384, doors: false, nDoors: 0, preset: 'shelves' },
@@ -58,7 +59,9 @@ export function defaultState() {
       mechClear: 25,           // seitlicher Platz für Beschlag
       pivotH: 250,             // Unterkante Bett (ausgeklappt) über Boden
       cabinetH: 2364,
-      depthMode: 'min',        // 'min' = Zeilentiefe auf Bett-Minimum, 'run' = frei
+      depthMode: 'min',
+      cladding: 'pax',         // 'pax' = Bettfront aus PAX-Türen (50/25), 'equal' = gleich breite Sonderfronten, 'none'
+      widthGrid: 250,          // Bettschrankbreite auf dieses Raster aufrunden (0 = minimal)        // 'min' = Zeilentiefe auf Bett-Minimum, 'run' = frei
       matKg: 28, rostKg: 9,
     },
     view: { frontMode: 'doors', cutZ: 1000 },
@@ -74,7 +77,8 @@ export function loadLocal() {
 
 export function migrate(s) {
   const d = defaultState();
-  if (!s || s.version !== 2) return d;
+  if (!s || (s.version !== 2 && s.version !== 3)) return d;
+  if (s.version === 2) { s.version = 3; if (s.runs && s.runs.left) s.runs.left.autoFiller = false; }
   const merge = (a, b) => {
     for (const k of Object.keys(a)) {
       if (b[k] === undefined) b[k] = a[k];
